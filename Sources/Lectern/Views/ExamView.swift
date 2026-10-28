@@ -10,6 +10,8 @@ struct ExamView: View {
     @State private var deck: [Deck.Item] = []
     @State private var position = 0
     @State private var results: [Bool] = []
+    /// Each card's first answer this round: asked-again cards come back until known, so only this says what was known.
+    @State private var firstTries: [String: Bool] = [:]
     @State private var flipped = false
     @State private var appeared = false
     @FocusState private var focused: Bool
@@ -123,6 +125,7 @@ struct ExamView: View {
             deck = ordered.compactMap { byID[$0.id] }
             position = 0
             results = []
+            firstTries = [:]
             flipped = false
         }
     }
@@ -150,7 +153,7 @@ struct ExamView: View {
         if let exam { parts.append(RelativeTime.until(exam.date)) }
         parts.append(plural("exam.weeks", weeks.count))
         parts.append(plural("exam.cards", deck.count))
-        if !results.isEmpty { parts.append(L("exam.knew", results.filter { $0 }.count)) }
+        if !firstTries.isEmpty { parts.append(L("exam.knew", knownFirstTime)) }
         return parts.joined(separator: " · ")
     }
 
@@ -178,18 +181,34 @@ struct ExamView: View {
 
     // MARK: the card
 
-    /// One mark per card: green known, amber asked again, black the one on show.
+    /// One mark per card: green known, amber asked again, black the one on show. A long deck is one bar.
+    @ViewBuilder
     private var progress: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<min(deck.count, 40), id: \.self) { index in
-                Capsule()
-                    .fill(index < results.count ? (results[index] ? Color(hex: 0x10B981) : Color(hex: 0xF59E0B))
-                          : index == results.count ? Theme.ink : Color(hex: 0xE6E6E6))
-                    .frame(height: 4)
+        if deck.count <= 40 {
+            HStack(spacing: 4) {
+                ForEach(0..<deck.count, id: \.self) { index in
+                    Capsule()
+                        .fill(index < results.count ? (results[index] ? Color(hex: 0x10B981) : Color(hex: 0xF59E0B))
+                              : index == results.count ? Theme.ink : Color(hex: 0xE6E6E6))
+                        .frame(height: 4)
+                }
             }
+            .animation(Theme.ease, value: results.count)
+        } else {
+            GeometryReader { proxy in
+                Capsule().fill(Color(hex: 0xE6E6E6))
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(Theme.ink)
+                            .frame(width: proxy.size.width * CGFloat(position) / CGFloat(max(1, deck.count)))
+                    }
+            }
+            .frame(height: 4)
+            .animation(Theme.ease, value: position)
         }
-        .animation(Theme.ease, value: results.count)
     }
+
+    /// Cards known the first time they came up this round.
+    private var knownFirstTime: Int { firstTries.values.filter { $0 }.count }
 
     private func card(_ item: Deck.Item) -> some View {
         ZStack {
@@ -271,7 +290,7 @@ struct ExamView: View {
             Text(L("exam.done"))
                 .font(.system(size: 19, weight: .semibold))
                 .kerning(-0.3)
-            Text(L("exam.doneSummary", results.filter { $0 }.count, results.count))
+            Text(L("exam.doneSummary", knownFirstTime, firstTries.count))
                 .font(.system(size: 13).monospacedDigit())
                 .foregroundStyle(Theme.secondary)
             HStack(spacing: 6) {
@@ -299,6 +318,7 @@ struct ExamView: View {
         flipped = false
         withAnimation(Theme.ease) {
             results.append(known)
+            if firstTries[item.card.id] == nil { firstTries[item.card.id] = known }
             if !known {
                 deck.insert(Deck.Item(card: item.card, session: item.session, week: item.week), at: min(deck.count, position + 4))
             }

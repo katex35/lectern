@@ -62,6 +62,35 @@ final class PracticeCardsTests: XCTestCase {
         XCTAssertEqual(cards[1].answer, "1. Önce girişleri sayın.\n2. Sonra bias ekleyin.")
     }
 
+    func testIndentedListsAndRestartedNumbersStayQuestions() {
+        let source = "# Sorular\r\n\r\n## Kısa cevaplı sorular\r\n\r\n1. Hangisi doğrudur?\r\n   1. Birinci\r\n   2. İkinci\r\n> Birinci.\r\n\r\n"
+            + "2. Neden?\r\n> Çünkü.\r\n\r\n## İkinci bölüm\r\n\r\n1. Yeni soru?\r\n> Yeni cevap.\r\n"
+        let cards = PracticeCards.parse(source, prefix: "w1")
+        XCTAssertEqual(cards.map(\.id), ["w1#1", "w1#2", "w1#1-2"])
+        XCTAssertEqual(cards[0].question, "Hangisi doğrudur?\n   1. Birinci\n   2. İkinci")
+        XCTAssertEqual(cards[0].answer, "Birinci.")
+        XCTAssertEqual(cards[2].question, "Yeni soru?")
+        XCTAssertEqual(cards[2].answer, "Yeni cevap.")
+        XCTAssertFalse(cards.contains { $0.question.contains("\r") || $0.answer.contains("\r") })
+    }
+
+    func testQuotedExpectedAnswersAndHeadingWords() {
+        let source = """
+        ### 1. Tanım
+        Tavlama nedir?
+
+        ## Cevaplar
+
+        #### 1. Beklenen cevap
+        > Kötü hamleleri bir olasılıkla kabul eden yerel arama.
+        """
+        XCTAssertEqual(PracticeCards.parse(source, prefix: "s").first?.answer, "Kötü hamleleri bir olasılıkla kabul eden yerel arama.")
+        XCTAssertTrue(PracticeCards.namesAnswers("Cevap anahtarı"))
+        XCTAssertTrue(PracticeCards.namesAnswers("Soruların cevapları"))
+        XCTAssertFalse(PracticeCards.namesAnswers("Kısa cevaplı sorular"))
+        XCTAssertFalse(PracticeCards.namesAnswers("Açık uçlu sorular"))
+    }
+
     func testMissedCardsComeFirstThenNewThenKnown() {
         let cards = (1...4).map { PracticeCard(id: "s#\($0)", number: $0, question: "Q\($0)", answer: "") }
         var log = PracticeLog()
