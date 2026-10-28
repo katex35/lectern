@@ -60,7 +60,7 @@ struct HomeView: View {
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         let key = hour < 5 ? "home.greeting.night" : hour < 12 ? "home.greeting.morning" : hour < 18 ? "home.greeting.afternoon" : "home.greeting.evening"
-        let name = NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+        let name = userFirstName
         return L(key, name)
     }
 

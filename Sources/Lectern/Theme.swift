@@ -57,6 +57,12 @@ private let localizedBundle: Bundle = {
 let appLanguage: String = Bundle.preferredLocalizations(from: tables.localizations,
                                                        forPreferences: Locale.preferredLanguages).first ?? "en"
 
+/// The first name the app greets; `LECTERN_USER_NAME` sets another one for screenshots.
+var userFirstName: String {
+    if let name = ProcessInfo.processInfo.environment["LECTERN_USER_NAME"], !name.isEmpty { return name }
+    return NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+}
+
 /// A localized string from the app's own tables.
 func L(_ key: String, _ arguments: CVarArg...) -> String {
     let format = localizedBundle.localizedString(forKey: key, value: nil, table: nil)

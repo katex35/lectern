@@ -1,61 +1,91 @@
-# Lectern
+<p align="center">
+  <img src="docs/icon.png" width="96" alt="">
+</p>
 
-Lectern records your lectures on a Mac and turns them into study notes. It writes the transcript, the notes and practice questions with an AI account you connect yourself, and keeps everything in plain files on your disk.
+<h1 align="center">Lectern</h1>
 
-## What it does
+<p align="center">Record your lectures on a Mac. Get the notes, practice questions and every date your lecturer mentioned.</p>
 
-- **Records** in a separate helper process, so a lecture keeps recording if the app quits. Breaks split a lecture into parts that play back as one timeline.
-- **Transcribes** with Gemini's transcription model. The audio is cut at quiet moments into five-minute pieces; an interrupted run continues where it stopped.
-- **Writes notes and questions** in your language from the transcript, with formulas, tables and the notes you typed during the lecture.
-- **Places board photos** at the moment they were taken (from the camera's own time) and puts them in the section of the notes that was being explained.
-- **Answers questions** about a lecture from its notes and transcript.
-- **Knows your timetable**: weekly lecture times, term dates, exams and deadlines, with a reminder before each lecture that can start the recording. The schedule shows the week with the lectures already recorded.
-- **Catches dates said in class**: an exam or deadline the lecturer announces is found in the transcript with their words and the moment they said it, and goes into the course's dates with one click.
-- **Exam prep**: each lecture's questions become cards to turn over, week by week; the ones you missed come first the next time.
-- **Keeps a page per course**: its recordings grouped by week, its hours and coming dates, searchable by what was said.
-- **Searches** every lecture's notes, transcript and conversation; a transcript hit plays the recording from that moment.
-- **Draws covers** for courses and lectures from their topic. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
-- Turkish and English.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0d0d0d" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-0d0d0d" alt="macOS 14 or later">
+  <img src="https://img.shields.io/badge/Swift-5.10-0d0d0d" alt="Swift 5.10">
+  <img src="https://img.shields.io/badge/English%20%C2%B7%20T%C3%BCrk%C3%A7e-0d0d0d" alt="English and Turkish">
+</p>
 
-## Accounts
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="The home screen: the next lecture with a record button, this week and notes that are ready">
+</p>
 
-Lectern has no server. It talks only to the services you connect, with your own keys, which are kept in the macOS Keychain.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/recording.png" alt="Recording a lecture">
+      <p><b>Record</b><br>Keeps recording if the app quits. Type a note or add a board photo as you go.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/notes.png" alt="Notes of a lecture with its recording">
+      <p><b>Read the notes</b><br>Transcript, notes and questions, with formulas, tables and your photos in place.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/schedule.png" alt="The week's schedule with a date said in class">
+      <p><b>Catch every date</b><br>Exams and deadlines said in class, in the lecturer's own words.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/exam.png" alt="A practice card before the midterm">
+      <p><b>Study for the exam</b><br>Each lecture's questions become cards. The ones you missed come back first.</p>
+    </td>
+  </tr>
+</table>
 
-| Task | Works with |
+## Your account, your files
+
+| | Works with |
 |---|---|
-| Transcription | A Google AI Studio key (Gemini) |
-| Notes, questions, answers | Sign in with ChatGPT (answers count against your plan), a Claude, OpenAI or Gemini key, or any server that speaks the OpenAI Chat Completions format, such as a local one |
-| Covers | An OpenAI or Gemini key (the ChatGPT sign-in cannot make images) |
+| Transcription | Gemini (a Google AI Studio key) |
+| Notes, questions, answers | Sign in with ChatGPT, a Claude, OpenAI or Gemini key, or a local OpenAI-style server |
 
-## Your files
+No Lectern server and no sign-up. Keys stay in the macOS Keychain, lectures stay in `~/Documents/Lectern` as plain files.
 
-Everything lives in `~/Documents/Lectern`:
-
-```
-Courses/<course>/course.json          name, language, weekly times, exams
-Courses/<course>/<date> Week <n>/     one lecture: recordings, session.json,
-                                      transcript.txt, notes.md, questions.md,
-                                      dates.json, chat.json, board/ photos, cover.jpg
-Meetings/<date> <time>/               the same for a meeting
-Covers/<course>.jpg                   course covers
-```
-
-Notes are Markdown; when Lectern writes a file again, the old one goes to `.lectern/previous` in the lecture's folder.
-
-## Building
-
-Lectern needs macOS 14 or later and Swift 5.10 or later (Xcode 16).
+## Install
 
 ```sh
-swift build
-swift test
-scripts/bundle.sh          # builds build/Lectern.app, signed for this Mac
-open build/Lectern.app
+brew install katex35/tap/lectern
+lectern
+```
+
+Homebrew builds it on your Mac in a couple of minutes, so macOS opens it without asking. It needs macOS 14 or later and the Xcode Command Line Tools.
+
+<details>
+<summary>More</summary>
+
+<br>
+
+**Building from source** needs macOS 14 or later and Swift 5.10 or later (Xcode 16):
+
+```sh
+swift build && swift test
+scripts/bundle.sh && open build/Lectern.app
 ```
 
 The microphone permission and notifications need the app bundle; `swift run Lectern` works for everything else.
 
-### For development
+**Files**
+
+```
+Courses/<course>/course.json          name, language, weekly times, exams
+Courses/<course>/<date> Week <n>/     recordings, transcript.txt, notes.md, questions.md,
+                                      dates.json, chat.json, board/ photos, cover.jpg
+Meetings/<date> <time>/               the same for a meeting
+```
+
+When Lectern writes a file again, the old one goes to `.lectern/previous` in the lecture's folder.
+
+**Covers** are drawn from each course's and lecture's topic with an OpenAI or Gemini key. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
+
+**For development**
 
 | Variable | Effect |
 |---|---|
@@ -63,12 +93,17 @@ The microphone permission and notifications need the app bundle; `swift run Lect
 | `LECTERN_SIMULATE=<seconds>` | Record a generated tone instead of the microphone |
 | `LECTERN_FAKE_AI=1` | Run transcription, notes, chat and covers on stand-ins, without any account |
 | `LECTERN_SNAPSHOT=<folder>` | Save each main screen as a PNG and quit |
+| `LECTERN_USER_NAME=<name>` | Greet another name in screenshots |
 | `LECTERN_IMPORT=<folder>` | Import lectures from the ders-kayit tool into an empty library |
+
+The screenshots above come from a made-up demo library.
+
+</details>
+
+## Türkçe
+
+Lectern dersini Mac'te kaydeder; kaydı yazıya döker, notu ve çalışma sorularını senin bağladığın hesapla yazar, derste söylenen sınav ve teslim tarihlerini yakalar. Her şey kendi diskinde, düz dosyalar halinde durur.
 
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Türkçe
-
-Lectern, Mac'te dersini kaydeder; kaydı yazıya döker, ders notunu ve çalışma sorularını senin bağladığın hesapla yazar. Her şey kendi diskinde, düz dosyalar halinde durur. Yazıya dökmek için Gemini anahtarı gerekir. Notlar için ChatGPT ile giriş, Claude, OpenAI ya da Gemini anahtarı veya yerel bir sunucu kullanılabilir. Anahtarlar macOS Anahtar Zinciri'nde saklanır. Lectern'in kendi sunucusu yoktur.

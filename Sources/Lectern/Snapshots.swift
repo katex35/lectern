@@ -98,7 +98,7 @@ enum Snapshots {
         if ProcessInfo.processInfo.environment["LECTERN_SIMULATE"] != nil {
             model.record(model.courses.first)
             await pause(4)
-            model.recorder.addNote("Sınavda çıkabilir dedi")
+            model.recorder.addNote(appLanguage == "tr" ? "Sınavda çıkabilir dedi" : "Said this could be on the exam")
             await pause(1.2)
             save(window, to: folder.appendingPathComponent("3-recording.png"))
             // a break with Stop pressed while the first half is still closing ends the lecture

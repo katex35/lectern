@@ -230,7 +230,7 @@ private struct UserRow: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let name = NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+        let name = userFirstName
         HStack(spacing: 8) {
             Text(String(name.prefix(1)).uppercased())
                 .font(.system(size: 11.5, weight: .semibold))
