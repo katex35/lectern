@@ -54,8 +54,14 @@ enum Snapshots {
             await model.recorder.resume()
             await pause(3)
             await model.recorder.stop()
-            await pause(2)
+            await pause(0.8)
             save(window, to: folder.appendingPathComponent("4-after.png"))
+            // with LECTERN_FAKE_AI the transcript and notes follow on their own
+            if let session = model.recorder.session {
+                for _ in 0..<40 where model.processing.isRunning(session) { await pause(0.5) }
+                await pause(1)
+                save(window, to: folder.appendingPathComponent("4b-processed.png"))
+            }
         }
 
         model.sidebarVisible = false
@@ -63,6 +69,35 @@ enum Snapshots {
         await pause(1.2)
         save(window, to: folder.appendingPathComponent("5-no-sidebar.png"))
         NSApp.terminate(nil)
+    }
+
+    /// Answers every piece after a moment, so the progress can be seen.
+    struct FakeTranscriber: Transcribing {
+        func transcribe(_ audio: URL, languages: [String], vocabulary: [String]) async throws -> String {
+            try await Task.sleep(nanoseconds: 1_200_000_000)
+            return "Bugün zincir kuralını ve geri yayılımı konuşacağız. Bu kısım sınavda çıkar."
+        }
+    }
+
+    /// Writes short fixed notes and questions.
+    struct FakeWriter: LanguageModelProvider {
+        let kind = ProviderKind.anthropic
+
+        func models() async throws -> [ModelInfo] { [] }
+
+        func stream(_ request: CompletionRequest) -> AsyncThrowingStream<CompletionEvent, Error> {
+            let text = request.system.contains("practice questions")
+                ? "# Zincir kuralı\n\n1. Zincir kuralı neyi hesaplar?\n> İç değişkenlere göre türevleri çarparak sonucun türevini.\n"
+                : "# Zincir kuralı ve geri yayılım\n\n## Zincir kuralı\n\n- **Zincir kuralı:** \\(\\frac{\\partial C}{\\partial w} = \\frac{\\partial C}{\\partial a}\\cdot\\frac{\\partial a}{\\partial w}\\)\n\n## Sınavda çıkabilecekler\n\n- Hoca zincir kuralının sınavda çıkacağını söyledi.\n"
+            return AsyncThrowingStream { continuation in
+                Task {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    continuation.yield(.text(text))
+                    continuation.yield(.finished(CompletionResult(stop: .complete)))
+                    continuation.finish()
+                }
+            }
+        }
     }
 
     private static func pause(_ seconds: Double) async {

@@ -47,6 +47,10 @@ private let localizedBundle: Bundle = {
     return .module
 }()
 
+/// The language the app speaks, "tr" or "en"; notes are written in it too.
+let appLanguage: String = Bundle.preferredLocalizations(from: Bundle.module.localizations,
+                                                       forPreferences: Locale.preferredLanguages).first ?? "en"
+
 /// A localized string from the app's own tables.
 func L(_ key: String, _ arguments: CVarArg...) -> String {
     let format = localizedBundle.localizedString(forKey: key, value: nil, table: nil)

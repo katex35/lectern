@@ -81,6 +81,8 @@ struct SessionView: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.secondary)
             }
+            Spacer(minLength: 8)
+            ProcessingChip(session: session)
         }
     }
 
@@ -150,6 +152,66 @@ struct SessionView: View {
                 EmptyLine(text: L("session.questionsPending"))
             }
         }
+    }
+}
+
+/// Where the transcript and notes are, in one small chip at the header's end; it only shows when
+/// something is happening or can be done.
+private struct ProcessingChip: View {
+    @Environment(AppModel.self) private var model
+    let session: Session
+
+    var body: some View {
+        let processing = model.processing
+        Group {
+            switch processing.state(of: session) {
+            case .running(let progress)?:
+                chip {
+                    ProgressView().controlSize(.mini)
+                    Text(label(progress)).monospacedDigit().contentTransition(.numericText())
+                }
+            case .needsGemini?:
+                SettingsLink { chip { Text(L("process.needsGemini")) } }.buttonStyle(.plain)
+            case .needsWriter?:
+                SettingsLink { chip { Text(L("process.needsWriter")) } }.buttonStyle(.plain)
+            case .failed(let message)?:
+                Button { processing.process(session) } label: {
+                    chip {
+                        Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold))
+                        Text(L("process.failed"))
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(message)
+            case nil:
+                if processing.hasWork(session, in: model) {
+                    Button { processing.process(session) } label: {
+                        chip { Text(L("process.start")) }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private func label(_ progress: ProcessingProgress) -> String {
+        switch progress {
+        case .preparing: return L("process.preparing")
+        case .transcribing(let done, let total): return L("process.transcribing", done, total)
+        case .writingNotes: return L("process.notes")
+        case .writingQuestions: return L("process.questions")
+        }
+    }
+
+    private func chip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 6) { content() }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(Theme.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(Capsule().fill(Color(hex: 0xF4F4F4)))
+            .contentShape(Capsule())
     }
 }
 

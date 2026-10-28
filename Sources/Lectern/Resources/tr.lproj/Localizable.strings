@@ -62,6 +62,14 @@
 "session.transcriptPending" = "Transkript henüz hazır değil.";
 "session.questionsPending" = "Sorular henüz hazırlanmadı.";
 "session.playFrom" = "%@ anından dinle";
+"process.preparing" = "Hazırlanıyor";
+"process.transcribing" = "Yazıya dökülüyor %1$ld/%2$ld";
+"process.notes" = "Not yazılıyor";
+"process.questions" = "Sorular yazılıyor";
+"process.needsGemini" = "Yazıya dökmek için Gemini anahtarı ekle";
+"process.needsWriter" = "Not için hesap bağla";
+"process.failed" = "Olmadı, tekrar dene";
+"process.start" = "Notları hazırla";
 
 "player.pause" = "Duraklat";
 "player.play" = "Dinle";

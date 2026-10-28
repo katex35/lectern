@@ -62,6 +62,14 @@
 "session.transcriptPending" = "The transcript is not ready yet.";
 "session.questionsPending" = "Questions are not ready yet.";
 "session.playFrom" = "Play from %@";
+"process.preparing" = "Getting ready";
+"process.transcribing" = "Transcribing %1$ld/%2$ld";
+"process.notes" = "Writing notes";
+"process.questions" = "Writing questions";
+"process.needsGemini" = "Add a Gemini key to transcribe";
+"process.needsWriter" = "Connect an account for notes";
+"process.failed" = "Failed, try again";
+"process.start" = "Prepare notes";
 
 "player.pause" = "Pause";
 "player.play" = "Play";

@@ -26,6 +26,7 @@ final class AppModel {
     let library: Library
     let schedule = Schedule()
     let recorder = RecordingController()
+    let processing = ProcessingCenter()
     private(set) var courses: [Course] = []
     /// Every lecture and meeting, newest first.
     private(set) var sessions: [Session] = []
@@ -37,6 +38,7 @@ final class AppModel {
     init(library: Library) {
         self.library = library
         recorder.model = self
+        processing.model = self
         reload()
         // an empty library can start from the folders of the original ders-kayit tool (copied, never moved)
         if courses.isEmpty, let source = ProcessInfo.processInfo.environment["LECTERN_IMPORT"], !source.isEmpty {
@@ -50,6 +52,7 @@ final class AppModel {
     }
 
     func refreshAccounts() {
+        Providers.accountsChanged()
         noteModelName = ProviderSummary.noteModel()
     }
 
@@ -287,7 +290,12 @@ final class RecordingController {
         stopAfterPause = false
         client = nil
         model?.reload()
-        if let finished, let model { model.open(model.library.reload(finished) ?? finished) }
+        if let finished, let model {
+            let fresh = model.library.reload(finished) ?? finished
+            model.open(fresh)
+            // the lecture is over: transcript and notes start right away
+            model.processing.process(fresh)
+        }
     }
 
     private func finishRecording() async {
