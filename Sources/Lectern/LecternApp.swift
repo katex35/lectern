@@ -80,6 +80,10 @@ struct RootView: View {
                         RecordingView().transition(.opacity)
                     case .session(let ref):
                         SessionView(ref: ref).id(ref).transition(.opacity)
+                    case .archive(let filter):
+                        ArchiveView(filter: filter).transition(.opacity)
+                    case .schedule:
+                        ScheduleView().transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

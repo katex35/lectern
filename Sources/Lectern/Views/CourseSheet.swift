@@ -210,10 +210,7 @@ struct CourseSheet: View {
     }
 
     private func weekdayName(_ iso: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: appLanguage)
-        // ISO counts from Monday, the formatter from Sunday
-        return formatter.standaloneWeekdaySymbols[iso % 7].localizedCapitalized
+        RelativeTime.weekday(iso, short: false)
     }
 
     /// A new slot an hour and a half long, the day after the last one.

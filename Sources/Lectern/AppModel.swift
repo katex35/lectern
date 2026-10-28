@@ -8,6 +8,24 @@ enum Screen: Hashable {
     case home
     case recording
     case session(SessionRef)
+    /// Every recording, or one course's, or the meetings.
+    case archive(ArchiveFilter)
+    /// The week's lectures and the dates ahead.
+    case schedule
+}
+
+enum ArchiveFilter: Hashable {
+    case all
+    case course(String)
+    case meetings
+
+    func includes(_ session: Session) -> Bool {
+        switch self {
+        case .all: return true
+        case .course(let id): return session.courseID == id
+        case .meetings: return session.kind == .meeting
+        }
+    }
 }
 
 /// A session is unique by its folder inside a course (or inside meetings).
@@ -19,6 +37,11 @@ struct SessionRef: Hashable {
         courseID = session.courseID
         id = session.id
     }
+}
+
+extension Session {
+    /// Folder names repeat across courses ("2026-10-13 Week 04"); lists key sessions by this.
+    var ref: SessionRef { SessionRef(self) }
 }
 
 @MainActor @Observable
@@ -119,6 +142,10 @@ final class AppModel {
 
     func open(_ session: Session) {
         withAnimation(Theme.ease) { screen = .session(SessionRef(session)) }
+    }
+
+    func go(to screen: Screen) {
+        withAnimation(Theme.ease) { self.screen = screen }
     }
 
     func addCourse() {

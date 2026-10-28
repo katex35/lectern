@@ -25,7 +25,15 @@ struct SidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     NextLectureCard()
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 8)
+
+                    NavRow(systemName: "waveform", label: L("archive.title"), badge: model.sessions.isEmpty ? nil : "\(model.sessions.count)",
+                           selected: model.screen == .archive(.all) || model.screen == .archive(.meetings)) {
+                        model.go(to: .archive(.all))
+                    }
+                    NavRow(systemName: "calendar", label: L("schedule.title"), badge: nil, selected: model.screen == .schedule) {
+                        model.go(to: .schedule)
+                    }
 
                     SectionLabel(text: L("sidebar.courses")) {
                         IconButton(systemName: "plus", label: L("sidebar.addCourse"), size: 20) { model.addCourse() }
@@ -37,7 +45,7 @@ struct SidebarView: View {
                     let recent = Array(model.sessions.prefix(8))
                     if !recent.isEmpty {
                         SectionLabel(text: L("sidebar.recent"))
-                        ForEach(recent, id: \.id) { session in
+                        ForEach(recent, id: \.ref) { session in
                             SessionRow(session: session)
                         }
                     }
@@ -117,19 +125,51 @@ private struct NextLectureCard: View {
     }
 }
 
+private struct NavRow: View {
+    let systemName: String
+    let label: String
+    let badge: String?
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 20)
+                Text(label)
+                    .font(.system(size: 13, weight: selected ? .medium : .regular))
+                Spacer(minLength: 0)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 11.5).monospacedDigit())
+                        .foregroundStyle(Theme.tertiary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowButtonStyle(selected: selected))
+    }
+}
+
 private struct CourseRow: View {
     @Environment(AppModel.self) private var model
     let course: Course
 
     var body: some View {
         let count = model.sessions.filter { $0.courseID == course.id }.count
+        let selected = model.screen == .archive(.course(course.id))
         Button {
-            if let latest = model.sessions.first(where: { $0.courseID == course.id }) { model.open(latest) }
+            model.go(to: .archive(.course(course.id)))
         } label: {
             HStack(spacing: 8) {
                 CoverView(course: course, width: 20, height: 20, radius: 6)
                 Text(course.shortName)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: selected ? .medium : .regular))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if count > 0 {
@@ -142,7 +182,7 @@ private struct CourseRow: View {
             .frame(height: 30)
             .contentShape(Rectangle())
         }
-        .buttonStyle(RowButtonStyle())
+        .buttonStyle(RowButtonStyle(selected: selected))
         .contextMenu {
             Button(L("course.edit")) { model.edit(course) }
             if Covers.maker() != nil {
@@ -237,9 +277,35 @@ enum SessionText {
         if session.totalDuration > 0 { parts.append(RelativeTime.duration(session.totalDuration)) }
         return parts.joined(separator: " · ")
     }
+
+    /// What the lecture holds, the course last so a long name is what gets cut:
+    /// "Today · 1 h 42 min · 13 questions · 2 photos · Heuristic".
+    static func details(_ session: Session, model: AppModel, showsCourse: Bool) -> String {
+        var parts = [RelativeTime.day(session.date)]
+        if session.totalDuration > 0 { parts.append(RelativeTime.duration(session.totalDuration)) }
+        let questions = model.text("questions.md", in: session).map(NoteDocument.questionCount) ?? 0
+        if questions > 0 { parts.append(plural("count.questions", questions)) }
+        if !session.photos.isEmpty { parts.append(plural("count.photos", session.photos.count)) }
+        if showsCourse { parts.append(model.course(session.courseID)?.shortName ?? L("session.meeting")) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// "%ld questions" or, for one, the `.one` form; Turkish has a single form for both.
+func plural(_ key: String, _ count: Int) -> String {
+    L(count == 1 ? "\(key).one" : key, count)
 }
 
 enum RelativeTime {
+    /// "Pzt" or "Pazartesi" for an ISO weekday (1 = Monday).
+    static func weekday(_ iso: Int, short: Bool = true) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: appLanguage)
+        // ISO counts from Monday, the formatter from Sunday
+        let symbols = short ? formatter.shortStandaloneWeekdaySymbols : formatter.standaloneWeekdaySymbols
+        return (symbols?[iso % 7] ?? "").localizedCapitalized
+    }
+
     static func dayAndTime(_ date: Date) -> String {
         "\(day(date)) \(date.formatted(date: .omitted, time: .shortened))"
     }

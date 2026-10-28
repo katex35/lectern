@@ -54,6 +54,18 @@ enum Snapshots {
         }
         UserDefaults.standard.set(lastTab, forKey: SettingsView.tabKey)
 
+        model.go(to: .archive(.all))
+        await pause(1.6)
+        save(window, to: folder.appendingPathComponent("1f-archive.png"))
+        if let course = model.courses.first(where: { course in model.sessions.contains { $0.courseID == course.id } }) {
+            model.go(to: .archive(.course(course.id)))
+            await pause(1.2)
+            save(window, to: folder.appendingPathComponent("1g-course.png"))
+        }
+        model.go(to: .schedule)
+        await pause(1.6)
+        save(window, to: folder.appendingPathComponent("1h-schedule.png"))
+
         if let session = model.sessions.first(where: { model.text("notes.md", in: $0) != nil }) ?? model.sessions.first {
             model.open(session)
             await pause(4)

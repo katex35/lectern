@@ -18,6 +18,17 @@ public enum NoteBlock: Equatable, Sendable {
 
 /// Splits generated notes into blocks: the Markdown subset the notes use, with LaTeX formulas.
 public enum NoteDocument {
+    /// How many numbers a questions file counts up to: "1. ...", "**2.** ...", "### 3) ...". The answer
+    /// key and "Expected answer" headings repeat the same numbers, so each number counts once.
+    public static func questionCount(_ source: String) -> Int {
+        guard let pattern = try? NSRegularExpression(pattern: #"^ {0,3}(?:#{1,6} *)?(?:\*\*)?(\d{1,3})[.)](?:\*\*)?[ \t]"#,
+                                                     options: .anchorsMatchLines) else { return 0 }
+        let numbers = pattern.matches(in: source, range: NSRange(source.startIndex..., in: source)).compactMap { match in
+            Range(match.range(at: 1), in: source).flatMap { Int(source[$0]) }
+        }
+        return Set(numbers).count
+    }
+
     /// The heading the notes open with, without a generic lead such as "Ders Notu:"; nil when there is none
     /// or nothing specific is left. It is the heading `parse(_:dropsTitle:)` leaves out.
     public static func title(of source: String) -> String? {

@@ -92,4 +92,21 @@ final class NoteDocumentTests: XCTestCase {
         XCTAssertEqual(NoteDocument.parse("### 2.4. XOR"), [.heading(level: 3, text: "2.4. XOR")])
         XCTAssertEqual(NoteDocument.parse("10.000 örnek"), [.paragraph("10.000 örnek")])
     }
+
+    func testQuestionCountIgnoresAnswerKeyAndNumbers() {
+        let source = """
+        # Sorular
+        ### 1. MLP ve geri yayılım
+        10.000 \\rightarrow 32
+        **2.** Öğrenme katsayısı
+        ### 3) XOR
+        ## Cevap anahtarı
+        1. **B:** MLP mimaridir.
+        2. **D:** Seçilen bir değerdir.
+        #### 3. Beklenen cevap
+          320.032+4.224=\\boxed{333.162}
+        """
+        XCTAssertEqual(NoteDocument.questionCount(source), 3)
+        XCTAssertEqual(NoteDocument.questionCount("Soru yok"), 0)
+    }
 }

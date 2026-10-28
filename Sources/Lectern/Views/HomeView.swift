@@ -42,7 +42,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Caption(text: L("home.ready"))
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                            ForEach(ready, id: \.id) { session in ReadyCard(session: session) }
+                            ForEach(ready, id: \.ref) { session in SessionCard(session: session) }
                         }
                     }
                     .enter(appeared, delay: 0.18)
@@ -245,23 +245,26 @@ private struct DayTile: View {
     }
 }
 
-private struct ReadyCard: View {
+/// A lecture or meeting as a card: its cover, title and a line about it.
+struct SessionCard: View {
     @Environment(AppModel.self) private var model
     let session: Session
+    var coverHeight: CGFloat = 92
+    var meta: String?
 
     var body: some View {
         Button { model.open(session) } label: {
             VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { proxy in
                     CoverView(course: model.course(session.courseID), session: session,
-                              width: proxy.size.width, height: 92, radius: 9)
+                              width: proxy.size.width, height: coverHeight, radius: 9)
                 }
-                .frame(height: 92)
+                .frame(height: coverHeight)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(SessionText.title(session, model: model))
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(2, reservesSpace: true)
-                    Text(SessionText.meta(session, model: model))
+                    Text(meta ?? SessionText.meta(session, model: model))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.tertiary)
                         .lineLimit(1)
