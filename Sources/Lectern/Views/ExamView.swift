@@ -184,7 +184,7 @@ struct ExamView: View {
     /// One mark per card: green known, amber asked again, black the one on show. A long deck is one bar.
     @ViewBuilder
     private var progress: some View {
-        if deck.count <= 40 {
+        if deck.count <= 24 {
             HStack(spacing: 4) {
                 ForEach(0..<deck.count, id: \.self) { index in
                     Capsule()

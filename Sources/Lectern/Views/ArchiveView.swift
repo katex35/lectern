@@ -60,8 +60,8 @@ struct ArchiveView: View {
             Text(title)
                 .font(.system(size: 24, weight: .semibold))
                 .kerning(-0.5)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+                .help(courseName ?? "")
             Spacer(minLength: 12)
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -89,9 +89,15 @@ struct ArchiveView: View {
     private var title: String {
         switch filter {
         case .all: return L("archive.title")
-        case .course(let id): return model.course(id)?.name ?? L("archive.title")
+        case .course(let id): return model.course(id)?.shortName ?? L("archive.title")
         case .meetings: return L("archive.meetings")
         }
+    }
+
+    /// The full name with its code, shown on hover where the title leaves the code out.
+    private var courseName: String? {
+        if case .course(let id) = filter { return model.course(id)?.name }
+        return nil
     }
 
     private var chips: some View {
@@ -127,7 +133,10 @@ struct ArchiveView: View {
             } else if lastWeek?.contains(session.date) == true {
                 title = L("archive.lastWeek")
             } else {
-                title = session.date.formatted(.dateTime.month(.wide).year()).localizedCapitalized
+                // the year only when it is not this one
+                let sameYear = calendar.isDate(session.date, equalTo: now, toGranularity: .year)
+                title = (sameYear ? session.date.formatted(.dateTime.month(.wide))
+                                  : session.date.formatted(.dateTime.month(.wide).year())).localizedCapitalized
             }
             if result.last?.title == title {
                 result[result.count - 1] = Group(title: title, sessions: result[result.count - 1].sessions + [session])
@@ -179,6 +188,7 @@ struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .animation(Theme.quick, value: on)
+        .help(course?.name ?? "")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
@@ -190,6 +200,9 @@ private struct CourseStrip: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Image(systemName: "calendar")
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.tertiary)
             Text(summary)
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.secondary)

@@ -222,6 +222,7 @@ private struct SessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle(selected: selected))
+        .help(SessionText.title(session, model: model))
     }
 }
 
@@ -265,7 +266,8 @@ enum SessionText {
         if session.kind == .meeting {
             // an untitled meeting is named after its folder, "2026-09-22-1552"; the time tells two on one day apart
             let untitled = session.title.first?.isNumber == true && session.title.contains("-")
-            return untitled ? "\(L("session.meeting")) · \(RelativeTime.dayAndTime(session.date))" : session.title
+            return untitled ? "\(L("session.meeting")) · \(RelativeTime.shortDay(session.date)) \(session.date.formatted(date: .omitted, time: .shortened))"
+                : session.title
         }
         return session.week.map { L("session.week", $0) } ?? session.title
     }
@@ -287,7 +289,7 @@ enum SessionText {
     /// What the lecture holds, the course last so a long name is what gets cut:
     /// "Today · 1 h 42 min · 13 questions · 2 photos · Heuristic".
     static func details(_ session: Session, model: AppModel, showsCourse: Bool) -> String {
-        var parts = [RelativeTime.day(session.date)]
+        var parts = [RelativeTime.shortDay(session.date)]
         if session.totalDuration > 0 { parts.append(RelativeTime.duration(session.totalDuration)) }
         let questions = model.text("questions.md", in: session).map(NoteDocument.questionCount) ?? 0
         if questions > 0 { parts.append(plural("count.questions", questions)) }
@@ -322,6 +324,15 @@ enum RelativeTime {
         if calendar.isDateInTomorrow(date) { return L("time.tomorrow") }
         if calendar.isDateInYesterday(date) { return L("time.yesterday") }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+
+    /// "Bugün", "Dün" or "20 Eki", for narrow places.
+    static func shortDay(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return L("time.today") }
+        if calendar.isDateInTomorrow(date) { return L("time.tomorrow") }
+        if calendar.isDateInYesterday(date) { return L("time.yesterday") }
+        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     static func until(_ date: Date) -> String {

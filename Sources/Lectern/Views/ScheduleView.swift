@@ -283,12 +283,13 @@ private struct MentionCard: View {
                         .lineLimit(1)
                     Button { model.play(date, in: session) } label: {
                         HStack(spacing: 3) {
-                            Text(verbatim: course?.shortName ?? "")
+                            // the moment first, so a long course name is what gets cut
                             if let at = date.at {
-                                Text(verbatim: "·")
                                 Image(systemName: "play.fill").font(.system(size: 7))
                                 Text(at.clock).monospacedDigit()
+                                Text(verbatim: "·")
                             }
+                            Text(verbatim: course?.shortName ?? "")
                         }
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.tertiary)
