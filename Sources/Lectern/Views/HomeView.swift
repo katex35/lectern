@@ -128,6 +128,13 @@ private struct NextCard: View {
                         Label(L("home.meeting"), systemImage: "person.2")
                     }
                     .buttonStyle(PillButtonStyle(kind: .outline))
+
+                    if model.courses.isEmpty {
+                        Button { model.addCourse() } label: {
+                            Label(L("home.addCourse"), systemImage: "plus")
+                        }
+                        .buttonStyle(PillButtonStyle(kind: .outline))
+                    }
                 }
             }
             Spacer(minLength: 0)

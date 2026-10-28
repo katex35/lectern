@@ -36,8 +36,52 @@ private struct GeneralPane: View {
                 Text(Locale.current.localizedString(forLanguageCode: Locale.current.language.languageCode?.identifier ?? "en") ?? "")
                     .foregroundStyle(Theme.secondary)
             }
+            SemesterSection()
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Term dates: week numbers of lectures count from the start.
+private struct SemesterSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var name = ""
+    @State private var start = Date()
+    @State private var end = Date()
+    @State private var hasEnd = false
+    @State private var loaded = false
+
+    var body: some View {
+        Section(L("settings.semester")) {
+            TextField(L("settings.semester.name"), text: $name, prompt: Text(L("settings.semester.namePrompt")))
+            DatePicker(L("settings.semester.start"), selection: $start, displayedComponents: .date)
+            Toggle(L("settings.semester.hasEnd"), isOn: $hasEnd)
+            if hasEnd {
+                DatePicker(L("settings.semester.end"), selection: $end, in: start..., displayedComponents: .date)
+            }
+        }
+        .task {
+            if let semester = model.library.settings().semester {
+                name = semester.name
+                start = semester.start
+                if let last = semester.end {
+                    end = last
+                    hasEnd = true
+                }
+            }
+            loaded = true
+        }
+        .onChange(of: name) { save() }
+        .onChange(of: start) { save() }
+        .onChange(of: end) { save() }
+        .onChange(of: hasEnd) { save() }
+    }
+
+    private func save() {
+        guard loaded else { return }
+        var settings = model.library.settings()
+        settings.semester = Semester(name: name.trimmingCharacters(in: .whitespaces), start: start, end: hasEnd ? end : nil)
+        try? model.library.save(settings)
     }
 }
 

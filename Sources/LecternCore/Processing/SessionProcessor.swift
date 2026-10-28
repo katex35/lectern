@@ -234,7 +234,8 @@ public struct SessionProcessor: Sendable {
         }
         guard !all.isEmpty || kept != nil else { throw ProcessingError.noAudio }
 
-        let languages = course.map { [$0.language] } ?? []
+        // a course without a set language lets the model detect it
+        let languages = [course?.language].compactMap { $0 }.filter { !$0.isEmpty }
         let vocabulary = [course?.name, course?.instructor].compactMap { $0 }
         let total = all.count
         let counter = Counter(done: all.filter { FileManager.default.fileExists(atPath: $0.text.path) }.count)

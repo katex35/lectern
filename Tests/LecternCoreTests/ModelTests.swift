@@ -45,6 +45,26 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(next?.start, date(2026, 11, 2, 13, 30))
     }
 
+    func testNewCourseIDs() {
+        XCTAssertEqual(Course.newID(code: "cse 5217", name: "Vision", taken: []), "CSE-5217")
+        XCTAssertEqual(Course.newID(code: "", name: "Veri Bilimi", taken: []), "VERI-BILIMI")
+        XCTAssertEqual(Course.newID(code: "goru", name: "x", taken: ["GORU", "GORU-2"]), "GORU-3")
+        XCTAssertEqual(Course.newID(code: "Goru", name: "x", taken: ["goru"]), "GORU-2")
+        XCTAssertEqual(Course.newID(code: "", name: "!!!", taken: []), "COURSE")
+    }
+
+    func testClashesAndInvalidSlots() {
+        let overlapping = Course(id: "DOGALDIL", name: "NLP", language: "en",
+                                 slots: [ScheduleSlot(weekday: 2, start: ClockTime("12:00")!, end: ClockTime("14:00")!),
+                                         ScheduleSlot(weekday: 2, start: ClockTime("12:30")!, end: ClockTime("12:30")!)])
+        let clashes = ScheduleClash.find(for: overlapping, among: [vision, research, overlapping])
+        XCTAssertEqual(clashes.map(\.other.id), ["GORU"])
+        XCTAssertFalse(overlapping.slots[1].isValid)
+        // touching ends do not clash
+        let after = ScheduleSlot(weekday: 2, start: ClockTime("12:30")!, end: ClockTime("13:00")!)
+        XCTAssertFalse(after.overlaps(vision.slots[0]))
+    }
+
     func testClockTimeCoding() throws {
         let data = try JSONStore.encoder.encode(vision)
         XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"09:55\""))

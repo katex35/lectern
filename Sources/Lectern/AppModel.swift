@@ -32,6 +32,8 @@ final class AppModel {
     private(set) var sessions: [Session] = []
     var screen: Screen = .home
     var sidebarVisible = true
+    /// The course in the add or edit sheet.
+    var editingCourse: CourseDraft?
     /// The service that writes notes, read from the keychain at launch and after Settings change it.
     private(set) var noteModelName = ""
 
@@ -93,6 +95,14 @@ final class AppModel {
 
     func open(_ session: Session) {
         withAnimation(Theme.ease) { screen = .session(SessionRef(session)) }
+    }
+
+    func addCourse() {
+        editingCourse = CourseDraft()
+    }
+
+    func edit(_ course: Course) {
+        editingCourse = CourseDraft(course)
     }
 
     func goHome() {

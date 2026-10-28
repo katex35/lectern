@@ -22,6 +22,14 @@ enum Snapshots {
         await pause(1.6)
         save(window, to: folder.appendingPathComponent("1-home.png"))
 
+        if let course = model.courses.first(where: { !$0.slots.isEmpty }) {
+            model.edit(course)
+            await pause(1.5)
+            if let sheet = window.attachedSheet { save(sheet, to: folder.appendingPathComponent("1b-course.png")) }
+            model.editingCourse = nil
+            await pause(0.8)
+        }
+
         if let session = model.sessions.first(where: { model.text("notes.md", in: $0) != nil }) ?? model.sessions.first {
             model.open(session)
             await pause(4)

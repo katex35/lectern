@@ -57,6 +57,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
         HStack(spacing: 0) {
             if model.sidebarVisible {
                 SidebarView()
@@ -80,6 +81,10 @@ struct RootView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(.white)
+        .sheet(item: $model.editingCourse) { draft in
+            CourseSheet(draft: draft)
+                .environment(model)
+        }
     }
 }
 

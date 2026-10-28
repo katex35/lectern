@@ -24,11 +24,11 @@ struct SidebarView: View {
                     NextLectureCard()
                         .padding(.bottom, 10)
 
-                    if !model.courses.isEmpty {
-                        SectionLabel(text: L("sidebar.courses"))
-                        ForEach(model.courses) { course in
-                            CourseRow(course: course)
-                        }
+                    SectionLabel(text: L("sidebar.courses")) {
+                        IconButton(systemName: "plus", label: L("sidebar.addCourse"), size: 20) { model.addCourse() }
+                    }
+                    ForEach(model.courses) { course in
+                        CourseRow(course: course)
                     }
 
                     let recent = Array(model.sessions.prefix(8))
@@ -54,16 +54,28 @@ struct SidebarView: View {
     }
 }
 
-private struct SectionLabel: View {
+private struct SectionLabel<Accessory: View>: View {
     let text: String
+    @ViewBuilder var accessory: () -> Accessory
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 11.5, weight: .medium))
-            .foregroundStyle(Theme.tertiary)
-            .padding(.horizontal, 8)
-            .padding(.top, 14)
-            .padding(.bottom, 2)
+        HStack(spacing: 0) {
+            Text(text)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Theme.tertiary)
+            Spacer(minLength: 0)
+            accessory()
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.top, 14)
+        .padding(.bottom, 2)
+    }
+}
+
+extension SectionLabel where Accessory == EmptyView {
+    init(text: String) {
+        self.init(text: text) { EmptyView() }
     }
 }
 
@@ -128,6 +140,9 @@ private struct CourseRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
+        .contextMenu {
+            Button(L("course.edit")) { model.edit(course) }
+        }
     }
 }
 

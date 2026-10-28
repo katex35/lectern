@@ -26,7 +26,9 @@ enum Theme {
         return palette[index % palette.count]
     }
 
-    static let palette: [Color] = [0xF59E0B, 0x3B82F6, 0x10B981, 0x8B5CF6, 0xEC4899, 0x64748B].map { Color(hex: $0) }
+    /// Course colors as stored in course.json.
+    static let paletteHex = ["#F59E0B", "#3B82F6", "#10B981", "#8B5CF6", "#EC4899", "#64748B"]
+    static let palette: [Color] = paletteHex.compactMap { UInt32($0.dropFirst(), radix: 16) }.map { Color(hex: $0) }
 }
 
 extension Color {

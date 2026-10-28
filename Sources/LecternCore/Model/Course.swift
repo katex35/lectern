@@ -80,6 +80,53 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
         let cleaned = text.uppercased().unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         return String(cleaned).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
+
+    /// The folder name for a new course: its code, or its name when there is no code, made safe and
+    /// numbered when another course already has it.
+    public static func newID(code: String, name: String, taken: Set<String>) -> String {
+        var base = sanitizedID(code)
+        if base.isEmpty { base = sanitizedID(name) }
+        if base.isEmpty { base = "COURSE" }
+        var id = base
+        var number = 2
+        // folders are compared without case on a default Mac disk
+        let used = Set(taken.map { $0.uppercased() })
+        while used.contains(id.uppercased()) {
+            id = "\(base)-\(number)"
+            number += 1
+        }
+        return id
+    }
+}
+
+extension ScheduleSlot {
+    /// A weekday from 1 to 7 and an end after the start.
+    public var isValid: Bool { (1...7).contains(weekday) && end > start }
+
+    public func overlaps(_ other: ScheduleSlot) -> Bool {
+        weekday == other.weekday && start < other.end && other.start < end
+    }
+}
+
+/// Two lectures of different courses at the same time on the same day.
+public struct ScheduleClash: Equatable, Sendable {
+    public var course: Course
+    public var slot: ScheduleSlot
+    public var other: Course
+    public var otherSlot: ScheduleSlot
+
+    /// Each clash once, between `course`'s slots and the other courses' slots.
+    public static func find(for course: Course, among courses: [Course]) -> [ScheduleClash] {
+        var clashes: [ScheduleClash] = []
+        for slot in course.slots where slot.isValid {
+            for other in courses where other.id != course.id {
+                for otherSlot in other.slots where otherSlot.isValid && slot.overlaps(otherSlot) {
+                    clashes.append(ScheduleClash(course: course, slot: slot, other: other, otherSlot: otherSlot))
+                }
+            }
+        }
+        return clashes
+    }
 }
 
 /// Term dates. Week numbers count from the Monday-independent start day, like the original tool:
