@@ -65,6 +65,19 @@ enum Snapshots {
         model.go(to: .schedule)
         await pause(1.6)
         save(window, to: folder.appendingPathComponent("1h-schedule.png"))
+        model.go(to: .exam(nil))
+        await pause(1.6)
+        save(window, to: folder.appendingPathComponent("1i-exam.png"))
+        // space turns the card over
+        for down in [true, false] {
+            if let event = NSEvent.keyEvent(with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
+                                            windowNumber: window.windowNumber, context: nil, characters: " ",
+                                            charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49) {
+                window.sendEvent(event)
+            }
+        }
+        await pause(1.0)
+        save(window, to: folder.appendingPathComponent("1j-exam-answer.png"))
 
         if let session = model.sessions.first(where: { model.text("notes.md", in: $0) != nil }) ?? model.sessions.first {
             model.open(session)

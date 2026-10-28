@@ -12,6 +12,8 @@ enum Screen: Hashable {
     case archive(ArchiveFilter)
     /// The week's lectures and the dates ahead.
     case schedule
+    /// Practice cards from a course's questions; nil is the course with the nearest exam.
+    case exam(String?)
 }
 
 enum ArchiveFilter: Hashable {

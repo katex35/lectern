@@ -407,10 +407,16 @@ struct MarkdownText: View {
     let blocks: [NoteBlock]
     /// The session folder that photo paths are relative to.
     var folder: URL?
+    /// Body text size.
+    var size: CGFloat = 15
+    /// Light text on a dark card.
+    var inverted = false
 
-    init(source: String, dropsTitle: Bool = false, folder: URL? = nil) {
+    init(source: String, dropsTitle: Bool = false, folder: URL? = nil, size: CGFloat = 15, inverted: Bool = false) {
         blocks = NoteDocument.parse(source, dropsTitle: dropsTitle)
         self.folder = folder
+        self.size = size
+        self.inverted = inverted
     }
 
     init(blocks: [NoteBlock], folder: URL?) {
@@ -432,11 +438,11 @@ struct MarkdownText: View {
                 switch block {
                 case .heading(let level, let text):
                     inline(text)
-                        .font(.system(size: level <= 1 ? 19 : level == 2 ? 16.5 : 15, weight: .semibold))
+                        .font(.system(size: level <= 1 ? size + 4 : level == 2 ? size + 1.5 : size, weight: .semibold))
                         .kerning(level <= 2 ? -0.2 : 0)
                         .padding(.top, level <= 2 ? 8 : 2)
                 case .paragraph(let text):
-                    inline(text).font(.system(size: 15))
+                    inline(text).font(.system(size: size))
                 case .bullet(let depth, let text):
                     item(marker: depth == 0 ? "•" : "◦", text: text)
                         .padding(.leading, CGFloat(depth) * 18)
@@ -444,21 +450,21 @@ struct MarkdownText: View {
                     item(marker: "\(number).", text: text)
                 case .quote(let text):
                     inline(text)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Theme.secondary)
+                        .font(.system(size: size))
+                        .foregroundStyle(inverted ? Color.white.opacity(0.72) : Theme.secondary)
                         .padding(.leading, 12)
-                        .overlay(alignment: .leading) { Capsule().fill(Theme.field).frame(width: 3) }
+                        .overlay(alignment: .leading) { Capsule().fill(inverted ? Color.white.opacity(0.25) : Theme.field).frame(width: 3) }
                 case .table(let header, let rows):
-                    NoteTable(header: header, rows: rows)
+                    NoteTable(header: header, rows: rows, inverted: inverted)
                 case .formula(let text):
                     Text(verbatim: text)
                         .font(.system(size: 17, design: .serif).italic())
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card))
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(inverted ? Color.white.opacity(0.1) : Theme.card))
                 case .rule:
-                    Rectangle().fill(Theme.line).frame(height: 1).padding(.vertical, 6)
+                    Rectangle().fill(inverted ? Color.white.opacity(0.18) : Theme.line).frame(height: 1).padding(.vertical, 6)
                 case .image(let path, let caption):
                     // only pictures inside the session folder are shown
                     if let folder, !path.contains(".."), !path.hasPrefix("/") {
@@ -481,12 +487,12 @@ struct MarkdownText: View {
     private func item(marker: String, text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: marker)
-                .foregroundStyle(Theme.tertiary)
+                .foregroundStyle(inverted ? Color.white.opacity(0.55) : Theme.tertiary)
                 .monospacedDigit()
                 .frame(minWidth: 12, alignment: .trailing)
             inline(text)
         }
-        .font(.system(size: 15))
+        .font(.system(size: size))
     }
 }
 
@@ -500,12 +506,13 @@ private func inline(_ text: String) -> Text {
 private struct NoteTable: View {
     let header: [String]
     let rows: [[String]]
+    var inverted = false
 
     var body: some View {
         let columns = max(header.count, rows.map(\.count).max() ?? 0)
         Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
             GridRow { cells(header, columns: columns, bold: true) }
-                .background(Theme.card)
+                .background(inverted ? Color.white.opacity(0.1) : Theme.card)
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow { cells(row, columns: columns, bold: false) }
@@ -513,7 +520,7 @@ private struct NoteTable: View {
         }
         .font(.system(size: 14))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(inverted ? Color.white.opacity(0.18) : Theme.line))
     }
 
     @ViewBuilder

@@ -34,6 +34,12 @@ struct SidebarView: View {
                     NavRow(systemName: "calendar", label: L("schedule.title"), badge: nil, selected: model.screen == .schedule) {
                         model.go(to: .schedule)
                     }
+                    NavRow(systemName: "text.book.closed", label: L("exam.title"), badge: nil, selected: {
+                        if case .exam = model.screen { return true }
+                        return false
+                    }()) {
+                        model.go(to: .exam(nil))
+                    }
 
                     SectionLabel(text: L("sidebar.courses")) {
                         IconButton(systemName: "plus", label: L("sidebar.addCourse"), size: 20) { model.addCourse() }

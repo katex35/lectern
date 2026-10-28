@@ -151,7 +151,7 @@ struct ArchiveView: View {
     }
 }
 
-private struct FilterChip: View {
+struct FilterChip: View {
     let label: String
     let course: Course?
     let on: Bool

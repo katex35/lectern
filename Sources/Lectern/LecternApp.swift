@@ -84,6 +84,8 @@ struct RootView: View {
                         ArchiveView(filter: filter).transition(.opacity)
                     case .schedule:
                         ScheduleView().transition(.opacity)
+                    case .exam(let courseID):
+                        ExamView(courseID: courseID).id(courseID).transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
