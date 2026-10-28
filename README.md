@@ -9,7 +9,10 @@ Lectern records your lectures on a Mac and turns them into study notes. It write
 - **Writes notes and questions** in your language from the transcript, with formulas, tables and the notes you typed during the lecture.
 - **Places board photos** at the moment they were taken (from the camera's own time) and puts them in the section of the notes that was being explained.
 - **Answers questions** about a lecture from its notes and transcript.
-- **Knows your timetable**: weekly lecture times, term dates, exams and deadlines, with a reminder before each lecture that can start the recording.
+- **Knows your timetable**: weekly lecture times, term dates, exams and deadlines, with a reminder before each lecture that can start the recording. The schedule shows the week with the lectures already recorded.
+- **Catches dates said in class**: an exam or deadline the lecturer announces is found in the transcript with their words and the moment they said it, and goes into the course's dates with one click.
+- **Exam prep**: each lecture's questions become cards to turn over, week by week; the ones you missed come first the next time.
+- **Keeps a page per course**: its recordings grouped by week, its hours and coming dates, searchable by what was said.
 - **Searches** every lecture's notes, transcript and conversation; a transcript hit plays the recording from that moment.
 - **Draws covers** for courses and lectures from their topic. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
 - Turkish and English.
@@ -32,7 +35,7 @@ Everything lives in `~/Documents/Lectern`:
 Courses/<course>/course.json          name, language, weekly times, exams
 Courses/<course>/<date> Week <n>/     one lecture: recordings, session.json,
                                       transcript.txt, notes.md, questions.md,
-                                      chat.json, board/ photos, cover.jpg
+                                      dates.json, chat.json, board/ photos, cover.jpg
 Meetings/<date> <time>/               the same for a meeting
 Covers/<course>.jpg                   course covers
 ```
