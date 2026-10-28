@@ -12,6 +12,8 @@ public enum NoteBlock: Equatable, Sendable {
     /// A displayed formula as plain text, possibly several lines.
     case formula(String)
     case rule
+    /// A picture on its own line, `![caption](path)`; the path is relative to the session folder.
+    case image(path: String, caption: String)
 }
 
 /// Splits generated notes into blocks: the Markdown subset the notes use, with LaTeX formulas.
@@ -74,6 +76,16 @@ public enum NoteDocument {
                 if closed {
                     let formula = MathText.plain(body)
                     if !formula.isEmpty { blocks.append(.formula(formula)) }
+                    continue
+                }
+            }
+
+            if line.hasPrefix("!["), line.hasSuffix(")"), let close = line.range(of: "]("),
+               case let caption = String(line[line.index(line.startIndex, offsetBy: 2)..<close.lowerBound]),
+               !caption.contains("]") {
+                let path = String(line[close.upperBound..<line.index(before: line.endIndex)]).trimmingCharacters(in: .whitespaces)
+                if !path.isEmpty {
+                    blocks.append(.image(path: path, caption: caption))
                     continue
                 }
             }

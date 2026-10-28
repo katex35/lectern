@@ -86,6 +86,11 @@ struct RootView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(.white)
+        // photos dropped anywhere else find their lecture by the time they were taken
+        .dropDestination(for: URL.self) { urls, _ in
+            model.importPhotos(urls)
+            return urls.contains(where: BoardPhotos.isPhoto)
+        }
         .sheet(item: $model.editingCourse) { draft in
             CourseSheet(draft: draft)
                 .environment(model)
@@ -120,6 +125,15 @@ private struct TopBar: View {
             }
             .buttonStyle(RowButtonStyle(radius: 7))
             Spacer()
+            if let notice = model.notice {
+                Text(notice)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .background(Capsule().fill(Color(hex: 0xF4F4F4)))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             if model.recorder.isActive, model.screen != .recording {
                 Button { withAnimation(Theme.ease) { model.screen = .recording } } label: {
                     HStack(spacing: 6) {

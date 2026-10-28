@@ -289,22 +289,8 @@ struct Composer: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = BoardPhotos.types
-        guard panel.runModal() == .OK else { return }
-        let board = model.folder(of: session).appendingPathComponent("board", isDirectory: true)
-        try? FileManager.default.createDirectory(at: board, withIntermediateDirectories: true)
-        var added = 0
-        for url in panel.urls {
-            // two IMG_0001.jpg from different folders are both kept
-            let name = url.deletingPathExtension().lastPathComponent
-            let suffix = url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)"
-            var target = board.appendingPathComponent(url.lastPathComponent)
-            var number = 2
-            while FileManager.default.fileExists(atPath: target.path) {
-                target = board.appendingPathComponent("\(name)-\(number)\(suffix)")
-                number += 1
-            }
-            if (try? FileManager.default.copyItem(at: url, to: target)) != nil { added += 1 }
-        }
-        if added > 0 { model.recorder.addNote(L("recording.photoAdded", added)) }
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        model.addPhotos(panel.urls, to: session)
+        model.recorder.addNote(L("recording.photoAdded", panel.urls.count))
     }
 }

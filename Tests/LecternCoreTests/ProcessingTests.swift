@@ -245,6 +245,30 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertTrue(transcript.hasPrefix("[00:00:00]\nkept\n\n"))
     }
 
+    func testAPhotoAddedLaterRewritesOnlyTheNotes() async throws {
+        var session = try makeSession()
+        let writer = FakeWriter()
+        let processor = SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
+                                         notesLanguage: "tr", pieceLength: 6)
+        _ = try await processor.run(session, course: course) { _ in }
+        XCTAssertEqual(writer.requests.count, 2)
+
+        session.photos.append(BoardPhoto(file: "IMG_1.jpg", recording: "a.m4a", time: 3))
+        try library.save(session)
+        XCTAssertFalse(SessionProcessor.isUpToDate(session, in: library))
+        // the processor reads the session again, so an older copy without the photo is enough
+        _ = try await processor.run(try makeSessionCopyWithoutPhotos(session), course: course) { _ in }
+        XCTAssertEqual(writer.requests.count, 3)
+        XCTAssertTrue(writer.requests.last?.messages.first?.text.contains("[00:00:03] board/IMG_1.jpg") == true)
+        XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
+    }
+
+    private func makeSessionCopyWithoutPhotos(_ session: Session) throws -> Session {
+        var copy = session
+        copy.photos = []
+        return copy
+    }
+
     func testARecordingAddedLaterIsTranscribedAndTheNotesRewritten() async throws {
         var session = try makeSession()
         let writer = FakeWriter()
@@ -281,6 +305,7 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
         try writeLecture(folder.appendingPathComponent("c.m4a"), seconds: 5, silences: [])
         session.recordings.append(RecordingInfo(file: "c.m4a", start: Date(timeIntervalSince1970: 1_800_002_000), duration: 5))
+        try library.save(session)
 
         let transcriber = FakeTranscriber()
         _ = try await SessionProcessor(library: library, transcriber: transcriber, writer: .init(provider: FakeWriter(), model: "m"),

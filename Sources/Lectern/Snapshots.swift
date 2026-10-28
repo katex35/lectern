@@ -74,6 +74,21 @@ enum Snapshots {
                 for _ in 0..<40 where model.processing.isRunning(session) { await pause(0.5) }
                 await pause(1)
                 save(window, to: folder.appendingPathComponent("4b-processed.png"))
+
+                // a board photo afterwards: the notes are written again with it in its place
+                // a fresh copy is dated now, like a photo just taken in class
+                let photo = FileManager.default.temporaryDirectory.appendingPathComponent("board-\(UUID().uuidString).jpg")
+                // written anew: a copy would keep the original's creation date
+                try? Data(contentsOf: model.library.root.appendingPathComponent("Covers/GORU.jpg")).write(to: photo)
+                if FileManager.default.fileExists(atPath: photo.path), let fresh = model.session(SessionRef(session)) {
+                    model.addPhotos([photo], to: fresh)
+                    await pause(0.5)
+                    for _ in 0..<40 where model.processing.isRunning(fresh) { await pause(0.5) }
+                    await pause(1.2)
+                    save(window, to: folder.appendingPathComponent("4c-photo.png"))
+                    await pause(4)
+                    save(window, to: folder.appendingPathComponent("4d-photo-later.png"))
+                }
             }
         }
 
@@ -99,9 +114,13 @@ enum Snapshots {
         func models() async throws -> [ModelInfo] { [] }
 
         func stream(_ request: CompletionRequest) -> AsyncThrowingStream<CompletionEvent, Error> {
+            // the photos the prompt lists go under the first section, as a real model is asked to place them
+            let photos = (request.messages.first?.text ?? "").split(separator: "\n")
+                .compactMap { line in line.range(of: "board/").map { "![](\(line[$0.lowerBound...]))\n\n" } }
+                .joined()
             let text = request.system.contains("practice questions")
                 ? "# Zincir kuralı\n\n1. Zincir kuralı neyi hesaplar?\n> İç değişkenlere göre türevleri çarparak sonucun türevini.\n"
-                : "# Zincir kuralı ve geri yayılım\n\n## Zincir kuralı\n\n- **Zincir kuralı:** \\(\\frac{\\partial C}{\\partial w} = \\frac{\\partial C}{\\partial a}\\cdot\\frac{\\partial a}{\\partial w}\\)\n\n## Sınavda çıkabilecekler\n\n- Hoca zincir kuralının sınavda çıkacağını söyledi.\n"
+                : "# Zincir kuralı ve geri yayılım\n\n## Zincir kuralı\n\n- **Zincir kuralı:** \\(\\frac{\\partial C}{\\partial w} = \\frac{\\partial C}{\\partial a}\\cdot\\frac{\\partial a}{\\partial w}\\)\n\n\(photos)## Sınavda çıkabilecekler\n\n- Hoca zincir kuralının sınavda çıkacağını söyledi.\n"
             return AsyncThrowingStream { continuation in
                 Task {
                     try? await Task.sleep(nanoseconds: 800_000_000)

@@ -19,6 +19,9 @@ enum NotePrompts {
         - A table when the lecture compares things or works through values.
         - If the lecturer said something matters for the exam, or the student marked a moment, collect those points \
         in a last section with a heading in \(languageName(language)) that says so.
+        - If the student photographed the board, put each listed photo exactly once, on a line of its own as \
+        ![](board/FILE), in the section about what was being explained at the photo's time. You cannot see the \
+        photos, so do not describe what is on them.
 
         Use only what is in the transcript and the student's notes. Where the transcript is garbled or a formula \
         cannot be made out, say so in one short sentence instead of guessing. The transcript is split into pieces \
@@ -56,6 +59,14 @@ enum NotePrompts {
         }
         if !marks.isEmpty {
             parts.append("The student's notes during the lecture:\n" + marks.joined(separator: "\n"))
+        }
+        let photos = session.photos.compactMap { photo -> (TimeInterval, String)? in
+            guard let recording = photo.recording, let time = photo.time else { return nil }
+            return ((offsets[recording] ?? 0) + time, photo.file)
+        }.sorted { $0.0 < $1.0 }
+        if !photos.isEmpty {
+            parts.append("Board photos the student took:\n" + photos.map { "[\(SessionProcessor.stamp($0.0))] board/\($0.1)" }
+                .joined(separator: "\n"))
         }
         parts.append("Transcript:\n" + transcript)
         return parts.joined(separator: "\n\n")

@@ -144,3 +144,6 @@
 "settings.reminders.lead" = "How early";
 "settings.reminders.appOnly" = "Notifications work when Lectern runs as Lectern.app.";
 "settings.reminders.denied" = "Notifications are not allowed. Turn them on in System Settings > Notifications.";
+"session.addPhotos" = "Add board photos";
+"photos.added" = "%ld photos added";
+"photos.unmatched" = "%ld photos match no lecture's time";

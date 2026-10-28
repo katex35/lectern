@@ -63,6 +63,8 @@ public struct SessionProcessor: Sendable {
 
     public func run(_ session: Session, course: Course?,
                     progress: @escaping @Sendable (ProcessingProgress) -> Void) async throws -> Outcome {
+        // photos and notes added since the caller read the session count too
+        let session = library.reload(session) ?? session
         let folder = library.folder(of: session)
         var outcome = Outcome()
         var state = Self.state(of: session, in: folder)
@@ -91,9 +93,10 @@ public struct SessionProcessor: Sendable {
 
         let notesURL = folder.appendingPathComponent("notes.md")
         let questionsURL = folder.appendingPathComponent("questions.md")
-        // notes from an older transcript are written again, and questions follow the notes
-        let needsNotes = !FileManager.default.fileExists(atPath: notesURL.path) || state.manifest.notes != state.manifest.transcript
-        let needsQuestions = needsNotes || !FileManager.default.fileExists(atPath: questionsURL.path)
+        // notes from an older transcript, or without the latest photos, are written again; questions follow
+        // the transcript only, since a photo changes where pictures sit in the notes, not what to ask
+        let needsNotes = !FileManager.default.fileExists(atPath: notesURL.path) || !state.notesCurrent
+        let needsQuestions = !FileManager.default.fileExists(atPath: questionsURL.path)
             || state.manifest.questions != state.manifest.transcript
         guard needsNotes || needsQuestions else { return outcome }
         guard let writer = try await writer() else {
@@ -107,6 +110,7 @@ public struct SessionProcessor: Sendable {
                                         limit: 16000)
             try replace(notesURL, with: notes, in: folder)
             state.manifest.notes = state.manifest.transcript
+            state.manifest.notesPhotos = state.photos
             try state.manifest.save(in: folder)
         }
         if needsQuestions {
@@ -127,6 +131,8 @@ public struct SessionProcessor: Sendable {
     struct Manifest: Codable, Equatable {
         var transcript: [String]
         var notes: [String]?
+        /// The board photos placed in the notes; missing for notes made before photos were tracked.
+        var notesPhotos: [String]?
         var questions: [String]?
 
         static func url(in folder: URL) -> URL { folder.appendingPathComponent(".lectern/made-from.json") }
@@ -145,6 +151,13 @@ public struct SessionProcessor: Sendable {
         var recordings: [String]
         var manifest: Manifest
         var transcriptCurrent: Bool
+        /// Board photos with a place on the timeline.
+        var photos: [String]
+
+        /// The notes follow the transcript and hold the photos taken so far.
+        var notesCurrent: Bool {
+            manifest.notes == manifest.transcript && (manifest.notesPhotos.map { Set($0) == Set(photos) } ?? true)
+        }
     }
 
     static func state(of session: Session, in folder: URL) -> State {
@@ -162,7 +175,8 @@ public struct SessionProcessor: Sendable {
             manifest = Manifest(transcript: [])
         }
         let current = exists("transcript.txt") && Set(recordings).isSubset(of: manifest.transcript)
-        return State(recordings: recordings, manifest: manifest, transcriptCurrent: current)
+        let photos = session.photos.filter { $0.recording != nil && $0.time != nil }.map(\.file).sorted()
+        return State(recordings: recordings, manifest: manifest, transcriptCurrent: current, photos: photos)
     }
 
     /// True when every finished recording is in the transcript and the notes and questions follow it.
@@ -171,7 +185,7 @@ public struct SessionProcessor: Sendable {
         let state = state(of: session, in: folder)
         let exists = { (name: String) in FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path) }
         return state.transcriptCurrent && exists("notes.md") && exists("questions.md")
-            && state.manifest.notes == state.manifest.transcript && state.manifest.questions == state.manifest.transcript
+            && state.notesCurrent && state.manifest.questions == state.manifest.transcript
     }
 
     // MARK: transcript

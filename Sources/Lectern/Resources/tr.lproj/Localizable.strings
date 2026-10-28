@@ -144,3 +144,6 @@
 "settings.reminders.lead" = "Ne kadar önce";
 "settings.reminders.appOnly" = "Bildirimler Lectern.app açıkken çalışır.";
 "settings.reminders.denied" = "Bildirim izni verilmedi. Sistem Ayarları > Bildirimler'den açabilirsin.";
+"session.addPhotos" = "Tahta fotoğrafı ekle";
+"photos.added" = "%ld fotoğraf eklendi";
+"photos.unmatched" = "%ld fotoğraf hiçbir dersin saatine denk gelmedi";

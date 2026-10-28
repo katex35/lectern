@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import ImageIO
 import LecternCore
 import Observation
 import SwiftUI
@@ -61,6 +62,11 @@ struct SessionView: View {
                 .frame(maxWidth: 760)
             }
             .task(id: ref) { await player.load(session, folder: model.folder(of: session)) }
+            // photos dropped here belong to this lecture whatever their time
+            .dropDestination(for: URL.self) { urls, _ in
+                model.addPhotos(urls, to: session)
+                return urls.contains(where: BoardPhotos.isPhoto)
+            }
             .onDisappear { player.stop() }
         } else {
             Text(L("session.missing"))
@@ -83,7 +89,16 @@ struct SessionView: View {
             }
             Spacer(minLength: 8)
             ProcessingChip(session: session)
+            IconButton(systemName: "photo.badge.plus", label: L("session.addPhotos")) { choosePhotos(for: session) }
         }
+    }
+
+    private func choosePhotos(for session: Session) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = BoardPhotos.types
+        guard panel.runModal() == .OK else { return }
+        model.addPhotos(panel.urls, to: session)
     }
 
     private var tabBar: some View {
@@ -127,10 +142,14 @@ struct SessionView: View {
     private func content(_ session: Session) -> some View {
         switch tab {
         case .notes:
+            let folder = model.folder(of: session)
+            let notes = model.text("notes.md", in: session)
+            let notesBlocks = notes.map { NoteDocument.parse($0, dropsTitle: true) } ?? []
             VStack(alignment: .leading, spacing: 18) {
-                BoardPhotos(folder: model.folder(of: session).appendingPathComponent("board", isDirectory: true))
-                if let notes = model.text("notes.md", in: session) {
-                    MarkdownText(source: notes, dropsTitle: true)
+                // photos the notes already show in their place are not repeated here
+                BoardPhotos(session: session, folder: folder, player: player, shown: MarkdownText.photos(in: notesBlocks))
+                if notes != nil {
+                    MarkdownText(blocks: notesBlocks, folder: folder)
                 } else {
                     MarkersList(session: session, player: player)
                     EmptyLine(text: L("session.notesPending"))
@@ -268,29 +287,39 @@ struct TimeChip: View {
     }
 }
 
+/// Board photos in the order they were taken; each one with a time jumps the player to its moment.
 struct BoardPhotos: View {
     /// What can be added and is shown: the formats phones and screenshots produce.
     static let types: [UTType] = [.jpeg, .png, .heic]
 
+    static func isPhoto(_ url: URL) -> Bool {
+        UTType(filenameExtension: url.pathExtension).map { type in types.contains { type.conforms(to: $0) } } ?? false
+    }
+
+    let session: Session
     let folder: URL
+    let player: SessionPlayer
+    var shown: Set<String> = []
 
     var body: some View {
-        let images = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil))?
-            .filter { url in
-                UTType(filenameExtension: url.pathExtension).map { type in Self.types.contains { type.conforms(to: $0) } } ?? false
-            }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent } ?? []
-        if !images.isEmpty {
+        let board = folder.appendingPathComponent("board", isDirectory: true)
+        let placed = Dictionary(session.photos.map { ($0.file, $0) }, uniquingKeysWith: { first, _ in first })
+        let files = ((try? FileManager.default.contentsOfDirectory(atPath: board.path)) ?? [])
+            .filter { Self.isPhoto(URL(fileURLWithPath: $0)) && !shown.contains($0) }
+            .map { (file: $0, time: placed[$0].flatMap(player.position(of:))) }
+            .sorted { ($0.time ?? .infinity, $0.file) < ($1.time ?? .infinity, $1.file) }
+        if !files.isEmpty {
             ScrollView(.horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(images, id: \.self) { url in
-                        if let image = NSImage(contentsOf: url) {
-                            Image(nsImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 220, height: 150)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
+                HStack(spacing: 8) {
+                    ForEach(files, id: \.file) { item in
+                        Thumbnail(url: board.appendingPathComponent(item.file), width: 168, height: 112)
+                            .overlay(alignment: .bottomLeading) {
+                                if let time = item.time {
+                                    TimeChip(time: time) { player.play(at: time) }
+                                        .background(Capsule().fill(.white.opacity(0.92)))
+                                        .padding(6)
+                                }
+                            }
                     }
                 }
             }
@@ -299,12 +328,83 @@ struct BoardPhotos: View {
     }
 }
 
-/// Generated notes: headings, lists, tables and formulas.
+/// A photo scaled down once and kept, so large phone pictures do not slow the page. With a width it
+/// fills that tile; without one it keeps its own shape, at most `height` tall, on the left.
+struct Thumbnail: View {
+    let url: URL
+    var width: CGFloat?
+    var height: CGFloat
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let width {
+                ZStack {
+                    Theme.card
+                    if let image {
+                        Image(nsImage: image).resizable().aspectRatio(contentMode: .fill).transition(.opacity)
+                    }
+                }
+                .frame(width: width, height: height)
+            } else if let image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .frame(maxWidth: .infinity, maxHeight: height, alignment: .leading)
+                    .transition(.opacity)
+            } else {
+                Theme.card.frame(width: height * 4 / 3, height: height)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+        .task(id: url) {
+            let url = url
+            let loaded = await Task.detached(priority: .userInitiated) { Thumbnails.image(url, pixels: 900) }.value
+            withAnimation(Theme.quick) { image = loaded }
+        }
+    }
+}
+
+enum Thumbnails {
+    private static let cache = NSCache<NSURL, NSImage>()
+
+    static func image(_ url: URL, pixels: Int) -> NSImage? {
+        if let cached = cache.object(forKey: url as NSURL) { return cached }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let picture = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: pixels,
+              ] as CFDictionary) else { return nil }
+        let image = NSImage(cgImage: picture, size: NSSize(width: picture.width, height: picture.height))
+        cache.setObject(image, forKey: url as NSURL)
+        return image
+    }
+}
+
+/// Generated notes: headings, lists, tables, formulas and the board photos in their place.
 struct MarkdownText: View {
     let blocks: [NoteBlock]
+    /// The session folder that photo paths are relative to.
+    var folder: URL?
 
-    init(source: String, dropsTitle: Bool = false) {
+    init(source: String, dropsTitle: Bool = false, folder: URL? = nil) {
         blocks = NoteDocument.parse(source, dropsTitle: dropsTitle)
+        self.folder = folder
+    }
+
+    init(blocks: [NoteBlock], folder: URL?) {
+        self.blocks = blocks
+        self.folder = folder
+    }
+
+    /// File names of the board photos placed in these blocks.
+    static func photos(in blocks: [NoteBlock]) -> Set<String> {
+        Set(blocks.compactMap { block in
+            if case .image(let path, _) = block { return URL(fileURLWithPath: path).lastPathComponent }
+            return nil
+        })
     }
 
     var body: some View {
@@ -340,6 +440,18 @@ struct MarkdownText: View {
                         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card))
                 case .rule:
                     Rectangle().fill(Theme.line).frame(height: 1).padding(.vertical, 6)
+                case .image(let path, let caption):
+                    // only pictures inside the session folder are shown
+                    if let folder, !path.contains(".."), !path.hasPrefix("/") {
+                        let url = folder.appendingPathComponent(path)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Thumbnail(url: url, height: 240)
+                                .onTapGesture { NSWorkspace.shared.open(url) }
+                            if !caption.isEmpty {
+                                Text(caption).font(.system(size: 12)).foregroundStyle(Theme.tertiary)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -482,6 +594,12 @@ final class SessionPlayer {
     /// nil while loading, or when its recording could not be put on the timeline.
     func position(of marker: Marker) -> TimeInterval? {
         offsets[marker.recording].map { $0 + marker.time }
+    }
+
+    /// nil for a photo not placed on the timeline, or while loading.
+    func position(of photo: BoardPhoto) -> TimeInterval? {
+        guard let recording = photo.recording, let time = photo.time else { return nil }
+        return offsets[recording].map { $0 + time }
     }
 
     func toggle() {

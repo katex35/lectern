@@ -67,10 +67,15 @@ final class AppModel {
         return Library(root: Library.defaultRoot)
     }
 
+    /// Goes up on every reload. Notes and transcripts are read from files, and a list of sessions that
+    /// comes back equal tells no view to redraw; views that read files watch this instead.
+    private(set) var revision = 0
+
     func reload() {
         courses = library.courses()
         sessions = (courses.flatMap { library.sessions(ofCourse: $0.id) } + library.meetings())
             .sorted { $0.date > $1.date }
+        revision += 1
     }
 
     func course(_ id: String?) -> Course? {
@@ -119,7 +124,60 @@ final class AppModel {
 
     /// Text in the session folder (`notes.md`, `transcript.txt`, ...), nil when missing.
     func text(_ file: String, in session: Session) -> String? {
-        try? String(contentsOf: folder(of: session).appendingPathComponent(file), encoding: .utf8)
+        _ = revision
+        return try? String(contentsOf: folder(of: session).appendingPathComponent(file), encoding: .utf8)
+    }
+
+    // MARK: photos
+
+    /// A short message in the top bar; it goes away after a few seconds.
+    private(set) var notice: String?
+
+    func show(_ text: String) {
+        withAnimation(Theme.quick) { notice = text }
+        Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if notice == text { withAnimation(Theme.quick) { notice = nil } }
+        }
+    }
+
+    /// Adds board photos to a session; notes already written are written again with the photos in place.
+    func addPhotos(_ urls: [URL], to session: Session) {
+        let photos = urls.filter(BoardPhotos.isPhoto)
+        guard !photos.isEmpty else { return }
+        do {
+            let updated = try library.addPhotos(photos, to: session)
+            reload()
+            show(L("photos.added", photos.count))
+            // during the lecture the notes come at the end anyway
+            if !updated.isRecording, text("notes.md", in: updated) != nil { processing.process(updated) }
+        } catch {
+            show(error.localizedDescription)
+        }
+    }
+
+    /// Photos dropped on the window: each goes to the lecture that was being recorded when it was taken.
+    /// The rest go to the lecture on screen, if there is one.
+    func importPhotos(_ urls: [URL]) {
+        var groups: [SessionRef: (session: Session, urls: [URL])] = [:]
+        var unmatched: [URL] = []
+        for url in urls where BoardPhotos.isPhoto(url) {
+            if let date = PhotoTiming.takenDate(of: url), let session = PhotoTiming.session(for: date, among: sessions) {
+                groups[SessionRef(session), default: (session, [])].urls.append(url)
+            } else {
+                unmatched.append(url)
+            }
+        }
+        if case .session(let ref) = screen, let current = session(ref), !unmatched.isEmpty {
+            groups[ref, default: (current, [])].urls += unmatched
+            unmatched = []
+        }
+        for group in groups.values { addPhotos(group.urls, to: group.session) }
+        if !unmatched.isEmpty {
+            show(L("photos.unmatched", unmatched.count))
+        } else if let first = groups.values.first?.session, screen != .session(SessionRef(first)) {
+            open(first)
+        }
     }
 }
 
