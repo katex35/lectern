@@ -20,7 +20,7 @@ struct SessionView: View {
         if let session = model.session(ref) {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
                         header(session)
                         PlayerBar(player: player)
                         tabBar
@@ -28,20 +28,26 @@ struct SessionView: View {
                             .id(tab)
                             .transition(.opacity.combined(with: .offset(y: 6)))
                     }
-                    .frame(maxWidth: 760, alignment: .leading)
                     .padding(.horizontal, 24)
-                    .padding(.top, 24)
-                    .padding(.bottom, 24)
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                     .frame(maxWidth: .infinity)
                 }
-                VStack(spacing: 8) {
+                // text fades out above the field instead of being cut
+                .overlay(alignment: .bottom) {
+                    LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 18)
+                        .allowsHitTesting(false)
+                }
+                VStack(spacing: 6) {
                     if askHint {
                         HStack(spacing: 6) {
                             Text(L("session.askNeedsAccount"))
                             SettingsLink { Text(L("session.openSettings")).underline() }
                                 .buttonStyle(.plain)
                         }
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundStyle(Theme.secondary)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
@@ -50,10 +56,10 @@ struct SessionView: View {
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 18)
+                .padding(.bottom, 14)
                 .frame(maxWidth: 760)
             }
-            .task(id: ref) { player.load(session, folder: model.folder(of: session)) }
+            .task(id: ref) { await player.load(session, folder: model.folder(of: session)) }
             .onDisappear { player.stop() }
         } else {
             Text(L("session.missing"))
@@ -63,15 +69,15 @@ struct SessionView: View {
     }
 
     private func header(_ session: Session) -> some View {
-        HStack(spacing: 14) {
-            CoverView(course: model.course(session.courseID), session: session, width: 56, height: 56, radius: 16)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
+            CoverView(course: model.course(session.courseID), session: session, width: 40, height: 40, radius: 11)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(SessionText.title(session, model: model))
-                    .font(.system(size: 24, weight: .semibold))
-                    .kerning(-0.6)
+                    .font(.system(size: 19, weight: .semibold))
+                    .kerning(-0.4)
                     .lineLimit(2)
                 Text(SessionText.meta(session, model: model))
-                    .font(.system(size: 14))
+                    .font(.system(size: 12.5))
                     .foregroundStyle(Theme.secondary)
             }
         }
@@ -84,12 +90,13 @@ struct SessionView: View {
                     withAnimation(Theme.ease) { tab = item }
                 } label: {
                     Text(label(item))
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(tab == item ? Theme.ink : Theme.secondary)
-                        .frame(width: 104, height: 32)
+                        .padding(.horizontal, 14)
+                        .frame(height: 26)
                         .background {
                             if tab == item {
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     .fill(.white)
                                     .shadow(color: .black.opacity(0.1), radius: 1.5, y: 1)
                                     .matchedGeometryEffect(id: "thumb", in: tabs)
@@ -101,8 +108,8 @@ struct SessionView: View {
                 .accessibilityAddTraits(tab == item ? .isSelected : [])
             }
         }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0xF4F4F4)))
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(hex: 0xF4F4F4)))
     }
 
     private func label(_ tab: Tab) -> String {
@@ -120,7 +127,7 @@ struct SessionView: View {
             VStack(alignment: .leading, spacing: 18) {
                 BoardPhotos(folder: model.folder(of: session).appendingPathComponent("board", isDirectory: true))
                 if let notes = model.text("notes.md", in: session) {
-                    MarkdownText(source: notes, title: SessionText.title(session, model: model))
+                    MarkdownText(source: notes, dropsTitle: true)
                 } else {
                     MarkersList(session: session, player: player)
                     EmptyLine(text: L("session.notesPending"))
@@ -165,9 +172,10 @@ private struct MarkersList: View {
         if !session.markers.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(session.markers) { marker in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        TimeChip(time: marker.time) { player.play(file: marker.recording, at: marker.time) }
-                        Text(marker.text).font(.system(size: 15))
+                    let time = player.position(of: marker)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        TimeChip(time: time) { player.play(at: time) }
+                        Text(marker.text).font(.system(size: 14.5))
                     }
                 }
             }
@@ -182,15 +190,15 @@ struct TimeChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: "play.fill").font(.system(size: 8))
-                Text(time.clock).font(.system(size: 12).monospacedDigit())
+                Image(systemName: "play.fill").font(.system(size: 7))
+                Text(time.clock).font(.system(size: 11.5).monospacedDigit())
             }
-            .padding(.horizontal, 9)
-            .frame(height: 24)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
             .overlay(Capsule().strokeBorder(Color(hex: 0xE6E6E6)))
             .contentShape(Capsule())
         }
-        .buttonStyle(RowButtonStyle(radius: 12))
+        .buttonStyle(RowButtonStyle(radius: 11))
         .accessibilityLabel(L("session.playFrom", time.clock))
     }
 }
@@ -225,8 +233,8 @@ private struct BoardPhotos: View {
 struct MarkdownText: View {
     let blocks: [NoteBlock]
 
-    init(source: String, title: String? = nil) {
-        blocks = NoteDocument.parse(source, droppingTitle: title)
+    init(source: String, dropsTitle: Bool = false) {
+        blocks = NoteDocument.parse(source, dropsTitle: dropsTitle)
     }
 
     var body: some View {
@@ -235,9 +243,9 @@ struct MarkdownText: View {
                 switch block {
                 case .heading(let level, let text):
                     inline(text)
-                        .font(.system(size: level <= 1 ? 22 : level == 2 ? 18 : 16, weight: .semibold))
-                        .kerning(level <= 2 ? -0.3 : 0)
-                        .padding(.top, level <= 2 ? 10 : 4)
+                        .font(.system(size: level <= 1 ? 19 : level == 2 ? 16.5 : 15, weight: .semibold))
+                        .kerning(level <= 2 ? -0.2 : 0)
+                        .padding(.top, level <= 2 ? 8 : 2)
                 case .paragraph(let text):
                     inline(text).font(.system(size: 15))
                 case .bullet(let depth, let text):
@@ -319,63 +327,117 @@ private struct NoteTable: View {
     }
 }
 
-/// Plays a session's recordings and keeps their loudness outline for the scrubber.
+/// Plays a session's recordings back to back as one timeline, with their loudness outline for the scrubber.
 @MainActor @Observable
 final class SessionPlayer {
     private(set) var envelope: [CGFloat] = []
     private(set) var duration: TimeInterval = 0
     private(set) var isPlaying = false
-    private var player: AVAudioPlayer?
-    private var files: [URL] = []
-    private var folder: URL?
+    private var player: AVPlayer?
+    /// Where each recording starts on the session timeline.
+    private var offsets: [String: TimeInterval] = [:]
+    private var loading: UUID?
+    private var endObserver: NSObjectProtocol?
 
-    var currentTime: TimeInterval { player?.currentTime ?? 0 }
+    var currentTime: TimeInterval {
+        let seconds = player?.currentTime().seconds ?? 0
+        return seconds.isFinite ? seconds : 0
+    }
 
-    func load(_ session: Session, folder: URL) {
+    func load(_ session: Session, folder: URL) async {
         stop()
-        self.folder = folder
-        files = session.orderedRecordings.map { folder.appendingPathComponent($0.file) }
-        guard let first = files.first else { return }
-        player = try? AVAudioPlayer(contentsOf: first)
-        duration = player?.duration ?? 0
+        let token = UUID()
+        loading = token
+        player = nil
         envelope = []
+        duration = 0
+        offsets = [:]
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+
+        let composition = AVMutableComposition()
+        guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { return }
+        var cursor = CMTime.zero
+        var parts: [Part] = []
+        var offsets: [String: TimeInterval] = [:]
+        for recording in session.orderedRecordings where !recording.inProgress {
+            let url = folder.appendingPathComponent(recording.file)
+            let asset = AVURLAsset(url: url)
+            guard let source = try? await asset.loadTracks(withMediaType: .audio).first,
+                  let length = try? await asset.load(.duration), length.seconds > 0,
+                  (try? track.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: source, at: cursor)) != nil
+            else { continue }
+            offsets[recording.file] = cursor.seconds
+            parts.append(Part(url: url, length: length.seconds))
+            cursor = cursor + length
+        }
+        // a different session may have been opened meanwhile
+        guard loading == token, !parts.isEmpty else { return }
+        self.offsets = offsets
+        duration = cursor.seconds
+        let item = AVPlayerItem(asset: composition)
+        player = AVPlayer(playerItem: item)
+        endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
+                                                             object: item, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.isPlaying = false }
+        }
+
+        let outline = await Self.outline(of: parts, total: duration)
+        guard loading == token else { return }
+        withAnimation(Theme.ease) { envelope = outline }
+    }
+
+    private struct Part: Sendable {
+        let url: URL
+        let length: TimeInterval
+    }
+
+    /// 120 bars over the whole timeline; each recording gets bars in proportion to its length.
+    private nonisolated static func outline(of parts: [Part], total: TimeInterval) async -> [CGFloat] {
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("app.lectern/Envelopes", isDirectory: true)
-        Task.detached(priority: .userInitiated) { [first] in
-            let outline = Envelope.cached(first, buckets: 120, in: cache).map { CGFloat($0) }
-            await MainActor.run { [weak self] in
-                // a different session may have been opened meanwhile
-                guard let self, self.files.first == first else { return }
-                withAnimation(Theme.ease) { self.envelope = outline }
+        // user-initiated: at utility priority a long lecture waited behind other work for many seconds
+        return await Task.detached(priority: .userInitiated) {
+            parts.flatMap { part in
+                let bars = max(1, Int((120 * part.length / total).rounded()))
+                return Envelope.cached(part.url, buckets: bars, in: cache).map { CGFloat($0) }
             }
-        }
+        }.value
+    }
+
+    /// Where a note typed during the lecture sits on the session timeline.
+    func position(of marker: Marker) -> TimeInterval {
+        (offsets[marker.recording] ?? 0) + marker.time
     }
 
     func toggle() {
         guard let player else { return }
-        if player.isPlaying { player.pause() } else { player.play() }
-        isPlaying = player.isPlaying
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            if currentTime >= duration - 0.5 { player.seek(to: .zero) }
+            player.play()
+            isPlaying = true
+        }
     }
 
     func seek(to fraction: Double) {
-        guard let player else { return }
-        player.currentTime = max(0, min(duration, duration * fraction))
+        play(at: duration * min(1, max(0, fraction)), start: false)
     }
 
-    func play(file: String, at time: TimeInterval) {
-        guard let folder else { return }
-        let url = folder.appendingPathComponent(file)
-        if player?.url != url {
-            player = try? AVAudioPlayer(contentsOf: url)
-            duration = player?.duration ?? 0
+    func play(at time: TimeInterval, start: Bool = true) {
+        guard let player else { return }
+        player.seek(to: CMTime(seconds: time, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        if start {
+            player.play()
+            isPlaying = true
         }
-        player?.currentTime = time
-        player?.play()
-        isPlaying = player?.isPlaying ?? false
     }
 
     func stop() {
-        player?.stop()
+        player?.pause()
         isPlaying = false
     }
 }
@@ -384,12 +446,12 @@ private struct PlayerBar: View {
     let player: SessionPlayer
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button { player.toggle() } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13))
+                    .font(.system(size: 10.5))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 28, height: 28)
                     .background(Circle().fill(Theme.ink))
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -405,7 +467,7 @@ private struct PlayerBar: View {
                         ForEach(Array(values.enumerated()), id: \.offset) { index, value in
                             Capsule()
                                 .fill(Double(index) / Double(values.count) <= fraction ? Theme.ink : Color(hex: 0xCFCFCF))
-                                .frame(height: 4 + 22 * value)
+                                .frame(height: 3 + 15 * value)
                         }
                     }
                     .frame(maxHeight: .infinity)
@@ -414,18 +476,18 @@ private struct PlayerBar: View {
                         player.seek(to: Double(value.location.x / max(1, proxy.size.width)))
                     })
                 }
-                .frame(height: 28)
+                .frame(height: 20)
                 .animation(Theme.ease, value: player.envelope.count)
             }
             TimelineView(.periodic(from: .now, by: 1)) { _ in
-                Text(player.currentTime.clock)
-                    .font(.system(size: 13).monospacedDigit())
+                Text(verbatim: player.duration > 0 ? "\(player.currentTime.clock) / \(player.duration.clock)" : "00:00")
+                    .font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(Theme.secondary)
-                    .padding(.trailing, 8)
+                    .padding(.trailing, 10)
             }
         }
-        .padding(.leading, 6)
-        .frame(height: 48)
+        .padding(.leading, 5)
+        .frame(height: 38)
         .background(Capsule().fill(Color(hex: 0xF4F4F4)))
     }
 }

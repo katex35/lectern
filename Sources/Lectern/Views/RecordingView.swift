@@ -10,7 +10,7 @@ struct RecordingView: View {
     var body: some View {
         let recorder = model.recorder
         VStack(spacing: 0) {
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
                 StatusLine()
                 switch recorder.phase {
                 case .onBreak:
@@ -20,11 +20,11 @@ struct RecordingView: View {
                 default:
                     LiveClock()
                     LiveWave(levels: recorder.levels, running: recorder.phase == .recording)
-                        .frame(height: 64)
+                        .frame(height: 48)
                     Controls()
                 }
             }
-            .padding(.top, 36)
+            .padding(.top, 24)
             .frame(maxWidth: 760)
 
             ScrollViewReader { proxy in
@@ -33,14 +33,14 @@ struct RecordingView: View {
                         ForEach(recorder.notes) { note in
                             HStack(spacing: 8) {
                                 Text(note.time.clock)
-                                    .font(.system(size: 12).monospacedDigit())
+                                    .font(.system(size: 11.5).monospacedDigit())
                                     .foregroundStyle(Theme.tertiary)
                                 Text(note.text)
-                                    .font(.system(size: 14.5))
+                                    .font(.system(size: 14))
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(hex: 0xF4F4F4)))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color(hex: 0xF4F4F4)))
                             .id(note.id)
                             .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                         }
@@ -58,7 +58,7 @@ struct RecordingView: View {
                 .disabled(recorder.phase != .recording)
                 .opacity(recorder.phase == .recording ? 1 : 0.5)
                 .padding(.horizontal, 24)
-                .padding(.bottom, 18)
+                .padding(.bottom, 14)
                 .frame(maxWidth: 760)
         }
         .frame(maxWidth: .infinity)
@@ -72,10 +72,10 @@ private struct StatusLine: View {
     var body: some View {
         let recorder = model.recorder
         let live = recorder.phase == .recording
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             PulsingDot(active: live, color: live ? Theme.record : Color(hex: 0x8E8E8E))
             Text(label)
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.secondary)
         }
     }
@@ -102,8 +102,8 @@ private struct LiveClock: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             Text(model.recorder.elapsed(at: context.date).clock)
-                .font(.system(size: 64, weight: .medium).monospacedDigit())
-                .kerning(-2.4)
+                .font(.system(size: 52, weight: .medium).monospacedDigit())
+                .kerning(-2)
                 .contentTransition(.numericText())
                 .animation(Theme.quick, value: Int(model.recorder.elapsed(at: context.date)))
         }
@@ -117,11 +117,11 @@ struct LiveWave: View {
     var running: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 4) {
+        HStack(alignment: .center, spacing: 3.5) {
             ForEach(Array(levels.enumerated()), id: \.offset) { index, level in
                 Capsule()
                     .fill(color(index))
-                    .frame(width: 4, height: max(6, 64 * (running ? level : 0.1)))
+                    .frame(width: 3.5, height: max(5, 48 * (running ? level : 0.1)))
             }
         }
         .animation(.linear(duration: 0.1), value: levels)
@@ -138,12 +138,12 @@ private struct Controls: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Button { Task { await model.recorder.takeBreak() } } label: {
                 Image(systemName: "pause.fill")
-                    .font(.system(size: 18))
+                    .font(.system(size: 14))
                     .foregroundStyle(Theme.ink)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 38, height: 38)
                     .background(Circle().fill(.white))
                     .overlay(Circle().strokeBorder(Theme.field))
             }
@@ -164,13 +164,13 @@ private struct StopButton: View {
 
     var body: some View {
         Button { Task { await model.recorder.stop() } } label: {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
                 .fill(.white)
-                .frame(width: 18, height: 18)
-                .frame(width: 60, height: 60)
+                .frame(width: 14, height: 14)
+                .frame(width: 46, height: 46)
                 .background(Circle().fill(Theme.record))
-                .background(Circle().stroke(Theme.record.opacity(halo ? 0 : 0.35), lineWidth: halo ? 18 : 0).scaleEffect(halo ? 1.3 : 1))
-                .shadow(color: Theme.record.opacity(0.28), radius: 9, y: 6)
+                .background(Circle().stroke(Theme.record.opacity(halo ? 0 : 0.35), lineWidth: halo ? 14 : 0).scaleEffect(halo ? 1.3 : 1))
+                .shadow(color: Theme.record.opacity(0.24), radius: 6, y: 4)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L("recording.stop"))
@@ -185,18 +185,18 @@ private struct BreakPanel: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let elapsed = model.recorder.breakStartedAt.map { context.date.timeIntervalSince($0) } ?? 0
                 Text(elapsed.clock)
-                    .font(.system(size: 56, weight: .medium).monospacedDigit())
-                    .kerning(-2)
+                    .font(.system(size: 46, weight: .medium).monospacedDigit())
+                    .kerning(-1.6)
                     .foregroundStyle(Theme.secondary)
             }
             Text(L("recording.breakNote"))
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.secondary)
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
                 Button(L("recording.resume")) { Task { await model.recorder.resume() } }
                     .buttonStyle(PillButtonStyle(kind: .primary))
                 Button(L("recording.finish")) { Task { await model.recorder.stop() } }
@@ -213,7 +213,7 @@ private struct FailurePanel: View {
     var body: some View {
         VStack(spacing: 14) {
             Text(message)
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 460)
@@ -251,31 +251,31 @@ struct Composer: View {
     var body: some View {
         HStack(spacing: 4) {
             if showsTools {
-                IconButton(systemName: "camera", label: L("recording.addPhoto"), size: 38) { addPhoto() }
-                IconButton(systemName: "flag", label: L("recording.mark"), size: 38) { model.recorder.addNote(L("recording.marked")) }
+                IconButton(systemName: "camera", label: L("recording.addPhoto"), size: 28) { addPhoto() }
+                IconButton(systemName: "flag", label: L("recording.mark"), size: 28) { model.recorder.addNote(L("recording.marked")) }
             }
             TextField(placeholder, text: $draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(.system(size: 14))
                 .focused(focused)
                 .onSubmit(sendIfNeeded)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
             Button(action: sendIfNeeded) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 26, height: 26)
                     .background(Circle().fill(draft.trimmingCharacters(in: .whitespaces).isEmpty ? Color(hex: 0xCFCFCF) : Theme.ink))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L("composer.send"))
         }
-        .padding(.leading, showsTools ? 8 : 12)
-        .padding(.trailing, 8)
-        .frame(minHeight: 56)
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(.white))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Theme.field))
-        .shadow(color: .black.opacity(0.05), radius: 15, y: 10)
+        .padding(.leading, showsTools ? 6 : 10)
+        .padding(.trailing, 6)
+        .frame(minHeight: 38)
+        .background(RoundedRectangle(cornerRadius: 19, style: .continuous).fill(.white))
+        .overlay(RoundedRectangle(cornerRadius: 19, style: .continuous).strokeBorder(Theme.field))
+        .shadow(color: .black.opacity(0.04), radius: 6, y: 3)
     }
 
     private func sendIfNeeded() {

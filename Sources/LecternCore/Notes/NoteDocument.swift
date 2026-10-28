@@ -16,19 +16,44 @@ public enum NoteBlock: Equatable, Sendable {
 
 /// Splits generated notes into blocks: the Markdown subset the notes use, with LaTeX formulas.
 public enum NoteDocument {
-    /// - Parameter title: dropped when it is the first heading, because the page already shows it.
-    public static func parse(_ source: String, droppingTitle title: String? = nil) -> [NoteBlock] {
+    /// The heading the notes open with, without a generic lead such as "Ders Notu:"; nil when there is none
+    /// or nothing specific is left. It is the heading `parse(_:dropsTitle:)` leaves out.
+    public static func title(of source: String) -> String? {
+        let first = source.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        guard let line = first, line.hasPrefix("#") else { return nil }
+        var text = line.drop(while: { $0 == "#" || $0 == " " }).trimmingCharacters(in: .whitespaces)
+        for lead in genericLeads {
+            guard text.lowercased().hasPrefix(lead) else { continue }
+            let rest = text.dropFirst(lead.count).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty { return nil }
+            if let separator = rest.first, ":-".contains(separator) {
+                text = rest.dropFirst().trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+        text = replacingFormulas(in: text, escaped: false)
+        return text.isEmpty ? nil : text
+    }
+
+    private static let genericLeads = ["ders notları", "ders notu", "lecture notes", "lecture note", "notlar", "notes"]
+
+    /// - Parameter dropsTitle: leaves out the leading heading, because the page shows it as its title.
+    public static func parse(_ source: String, dropsTitle: Bool = false) -> [NoteBlock] {
         var blocks: [NoteBlock] = []
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var i = 0
         var previousBlank = true
+        var atStart = true
 
         while i < lines.count {
             let raw = lines[i]
             let line = raw.trimmingCharacters(in: .whitespaces)
             i += 1
             if line.isEmpty { previousBlank = true; continue }
-            defer { previousBlank = false }
+            let isFirstLine = atStart
+            defer { previousBlank = false; atStart = false }
 
             // displayed formula: \[ ... \] or $$ ... $$, on one line or several
             if let opener = ["\\[", "$$"].first(where: { line.hasPrefix($0) }) {
@@ -55,8 +80,7 @@ public enum NoteDocument {
             if line.hasPrefix("#") {
                 let level = line.prefix(while: { $0 == "#" }).count
                 let text = line.dropFirst(level).trimmingCharacters(in: .whitespaces)
-                let isTitle = blocks.isEmpty && title.map { $0.trimmingCharacters(in: .whitespaces) == text } == true
-                if !isTitle { blocks.append(.heading(level: level, text: inline(text))) }
+                if !(dropsTitle && isFirstLine) { blocks.append(.heading(level: level, text: inline(text))) }
                 continue
             }
 
@@ -154,6 +178,10 @@ public enum NoteDocument {
 
     /// Inline formulas `\( ... \)` become escaped plain text inside the Markdown.
     static func inline(_ text: String) -> String {
+        replacingFormulas(in: text, escaped: true)
+    }
+
+    private static func replacingFormulas(in text: String, escaped escapes: Bool) -> String {
         var out = ""
         var rest = Substring(text)
         while let start = rest.range(of: "\\(") {
@@ -163,7 +191,8 @@ public enum NoteDocument {
                 rest = rest[start.lowerBound...]
                 break
             }
-            out += escaped(MathText.plain(String(after[..<end.lowerBound])))
+            let formula = MathText.plain(String(after[..<end.lowerBound]))
+            out += escapes ? escaped(formula) : formula
             rest = after[end.upperBound...]
         }
         out += rest

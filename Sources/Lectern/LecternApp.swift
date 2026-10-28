@@ -92,12 +92,23 @@ private struct TopBar: View {
                 // traffic lights sit here when the sidebar is closed
                 Color.clear.frame(width: 70, height: 1)
             }
-            IconButton(systemName: "sidebar.left", label: L("menu.toggleSidebar"), size: 36) {
+            IconButton(systemName: "sidebar.left", label: L("menu.toggleSidebar")) {
                 withAnimation(Theme.ease) { model.sidebarVisible.toggle() }
             }
-            Text(model.noteModelName)
-                .font(.system(size: 15, weight: .medium))
+            // the service writing notes; opens the accounts in Settings, like a model picker
+            SettingsLink {
+                HStack(spacing: 4) {
+                    Text(model.noteModelName)
+                        .font(.system(size: 14, weight: .medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.tertiary)
+                }
                 .padding(.horizontal, 8)
+                .frame(height: 28)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(RowButtonStyle(radius: 7))
             Spacer()
             if model.recorder.isActive, model.screen != .recording {
                 Button { withAnimation(Theme.ease) { model.screen = .recording } } label: {
@@ -108,8 +119,8 @@ private struct TopBar: View {
                                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
                     .background(Capsule().fill(Color(hex: 0xFFF1F1)))
                 }
                 .buttonStyle(.plain)
@@ -155,7 +166,7 @@ private struct MenuBarPanel: View {
         let recorder = model.recorder
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                CoverView(course: recorder.course ?? model.currentLecture ?? model.nextLecture?.course, width: 34, height: 34, radius: 10)
+                CoverView(course: recorder.course ?? model.currentLecture ?? model.nextLecture?.course, width: 30, height: 30, radius: 8)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(recorder.course?.shortName ?? model.currentLecture?.shortName ?? model.nextLecture?.course.shortName ?? "Lectern")
                         .font(.system(size: 14, weight: .semibold))
@@ -183,13 +194,13 @@ private struct MenuBarPanel: View {
                         .help(L("recording.takeBreak"))
                 }
                 Button(L("recording.stop")) { Task { await recorder.stop() } }
-                    .buttonStyle(PillButtonStyle(kind: .danger, height: 34))
+                    .buttonStyle(PillButtonStyle(kind: .danger))
             } else if recorder.phase == .onBreak {
                 Button(L("recording.resume")) { Task { await recorder.resume() } }
-                    .buttonStyle(PillButtonStyle(kind: .primary, height: 34))
+                    .buttonStyle(PillButtonStyle(kind: .primary))
             } else {
                 Button(L("home.record")) { model.record(nil) }
-                    .buttonStyle(PillButtonStyle(kind: .primary, height: 34))
+                    .buttonStyle(PillButtonStyle(kind: .primary))
             }
             Button(L("menu.openWindow")) {
                 NSApp.activate(ignoringOtherApps: true)

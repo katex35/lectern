@@ -32,9 +32,18 @@ final class MathTextTests: XCTestCase {
 
 final class NoteDocumentTests: XCTestCase {
     func testTitleIsDroppedOnlyWhenItLeadsTheNotes() {
-        let blocks = NoteDocument.parse("# Yapay Sinir Ağları\n\n## Giriş\nMetin", droppingTitle: "Yapay Sinir Ağları")
+        let blocks = NoteDocument.parse("# Yapay Sinir Ağları\n\n## Giriş\nMetin", dropsTitle: true)
         XCTAssertEqual(blocks, [.heading(level: 2, text: "Giriş"), .paragraph("Metin")])
-        XCTAssertEqual(NoteDocument.parse("# Başka\n", droppingTitle: "Yapay").first, .heading(level: 1, text: "Başka"))
+        XCTAssertEqual(NoteDocument.parse("Önsöz\n# Başlık", dropsTitle: true),
+                       [.paragraph("Önsöz"), .heading(level: 1, text: "Başlık")])
+    }
+
+    func testTitleLosesItsGenericLead() {
+        XCTAssertEqual(NoteDocument.title(of: "# Ders Notu: Yapay Sinir Ağları\nmetin"), "Yapay Sinir Ağları")
+        XCTAssertEqual(NoteDocument.title(of: "## Lecture notes - Gradient \\(\\eta\\)"), "Gradient η")
+        XCTAssertNil(NoteDocument.title(of: "# Ders Notu\nmetin"))
+        XCTAssertEqual(NoteDocument.title(of: "# Notlandırma ölçütleri"), "Notlandırma ölçütleri")
+        XCTAssertNil(NoteDocument.title(of: "düz metin"))
     }
 
     func testInlineFormulasAreEscapedForMarkdown() {

@@ -92,13 +92,13 @@ struct RowButtonStyle: ButtonStyle {
 struct PillButtonStyle: ButtonStyle {
     enum Kind { case primary, outline, danger }
     var kind: Kind = .primary
-    var height: CGFloat = 44
+    var height: CGFloat = 32
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14.5, weight: .medium))
+            .font(.system(size: 13.5, weight: .medium))
             .foregroundStyle(kind == .outline ? Theme.ink : .white)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 14)
             .frame(height: height)
             .background(Capsule().fill(kind == .primary ? Theme.ink : kind == .danger ? Theme.record : .white))
             .overlay(Capsule().strokeBorder(kind == .outline ? Theme.field : .clear))
@@ -112,13 +112,13 @@ struct PillButtonStyle: ButtonStyle {
 struct IconButton: View {
     let systemName: String
     let label: String
-    var size: CGFloat = 32
+    var size: CGFloat = 28
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Theme.secondary)
                 .frame(width: size, height: size)
                 .contentShape(Rectangle())
@@ -137,9 +137,4 @@ extension TimeInterval {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
     }
 
-    /// 1:42 for durations in the sidebar; a recording under a minute counts as one
-    var hoursMinutes: String {
-        let minutes = Swift.max(1, Int((self / 60).rounded()))
-        return String(format: "%d:%02d", minutes / 60, minutes % 60)
-    }
 }

@@ -58,7 +58,7 @@
 "session.tab.notes" = "Notes";
 "session.tab.transcript" = "Transcript";
 "session.tab.questions" = "Questions";
-"session.notesPending" = "Notes are not written yet.";
+"session.notesPending" = "The lecture notes are not ready yet.";
 "session.transcriptPending" = "The transcript is not ready yet.";
 "session.questionsPending" = "Questions are not ready yet.";
 "session.playFrom" = "Play from %@";
@@ -71,7 +71,7 @@
 "menu.toggleSidebar" = "Sidebar";
 "menu.openWindow" = "Open window";
 
-"top.noModel" = "No account connected";
+"top.noModel" = "Connect an account";
 
 "settings.accounts" = "Accounts";
 "settings.general" = "General";

@@ -45,9 +45,10 @@ struct SidebarView: View {
             .scrollIndicators(.never)
 
             UserRow()
-                .padding(8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
         }
-        .frame(width: 260)
+        .frame(width: 248)
         .frame(maxHeight: .infinity)
         .background(Theme.sidebar)
     }
@@ -58,11 +59,11 @@ private struct SectionLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 11.5, weight: .medium))
             .foregroundStyle(Theme.tertiary)
-            .padding(.horizontal, 10)
-            .padding(.top, 16)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 8)
+            .padding(.top, 14)
+            .padding(.bottom, 2)
     }
 }
 
@@ -72,30 +73,30 @@ private struct NextLectureCard: View {
     var body: some View {
         if let next = model.nextLecture {
             Button { model.record(next.course) } label: {
-                HStack(spacing: 10) {
-                    CoverView(course: next.course, width: 36, height: 36, radius: 10)
-                    VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 8) {
+                    CoverView(course: next.course, width: 30, height: 30, radius: 8)
+                    VStack(alignment: .leading, spacing: 0) {
                         Text(next.course.shortName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
                         Text(RelativeTime.dayAndTime(next.start))
-                            .font(.system(size: 12.5))
+                            .font(.system(size: 11.5))
                             .foregroundStyle(Theme.tertiary)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 24, height: 24)
                         .background(Circle().fill(Theme.ink))
                 }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line))
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.top, 6)
+            .padding(.top, 2)
             .accessibilityLabel(L("sidebar.recordNext", next.course.name))
         }
     }
@@ -110,20 +111,20 @@ private struct CourseRow: View {
         Button {
             if let latest = model.sessions.first(where: { $0.courseID == course.id }) { model.open(latest) }
         } label: {
-            HStack(spacing: 10) {
-                CoverView(course: course, width: 26, height: 26, radius: 8)
+            HStack(spacing: 8) {
+                CoverView(course: course, width: 20, height: 20, radius: 6)
                 Text(course.shortName)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 12).monospacedDigit())
+                        .font(.system(size: 11.5).monospacedDigit())
                         .foregroundStyle(Theme.tertiary)
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
+            .padding(.horizontal, 8)
+            .frame(height: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
@@ -137,19 +138,20 @@ private struct SessionRow: View {
     var body: some View {
         let selected = model.screen == .session(SessionRef(session))
         Button { model.open(session) } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Text(SessionText.shortTitle(session, model: model))
-                    .font(.system(size: 14, weight: selected ? .medium : .regular))
+                    .font(.system(size: 13, weight: selected ? .medium : .regular))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if session.totalDuration > 0 {
-                    Text(session.totalDuration.hoursMinutes)
-                        .font(.system(size: 12).monospacedDigit())
+                    Text(RelativeTime.duration(session.totalDuration))
+                        .font(.system(size: 11.5).monospacedDigit())
                         .foregroundStyle(Theme.tertiary)
+                        .fixedSize()
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
+            .padding(.horizontal, 8)
+            .frame(height: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle(selected: selected))
@@ -161,27 +163,27 @@ private struct UserRow: View {
 
     var body: some View {
         let name = NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(String(name.prefix(1)).uppercased())
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
+                .frame(width: 24, height: 24)
                 .background(Circle().fill(Theme.ink))
             Text(name)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
             Spacer(minLength: 0)
             SettingsLink {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(Theme.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(RowButtonStyle(radius: 8))
+            .buttonStyle(RowButtonStyle(radius: 7))
             .accessibilityLabel(L("sidebar.settings"))
         }
-        .padding(.horizontal, 8)
-        .frame(height: 48)
+        .padding(.horizontal, 6)
+        .frame(height: 40)
     }
 }
 
@@ -190,10 +192,8 @@ private struct UserRow: View {
 enum SessionText {
     /// The first heading of the notes, else "Week 6" or the meeting title.
     static func title(_ session: Session, model: AppModel) -> String {
-        if let notes = model.text("notes.md", in: session),
-           let heading = notes.split(separator: "\n").first(where: { $0.hasPrefix("#") }) {
-            let text = heading.drop(while: { $0 == "#" || $0 == " " })
-            if !text.isEmpty { return String(text) }
+        if let notes = model.text("notes.md", in: session), let heading = NoteDocument.title(of: notes) {
+            return heading
         }
         if session.kind == .meeting {
             // an untitled meeting is named after its folder, "2026-09-22-1552"; the time tells two on one day apart

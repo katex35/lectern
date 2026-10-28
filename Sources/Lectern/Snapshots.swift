@@ -23,7 +23,7 @@ enum Snapshots {
             save(window, to: folder.appendingPathComponent("2-session.png"))
             if let notes = model.text("notes.md", in: session) {
                 // the whole notes, to check tables and formulas further down
-                let renderer = ImageRenderer(content: MarkdownText(source: notes, title: SessionText.title(session, model: model))
+                let renderer = ImageRenderer(content: MarkdownText(source: notes, dropsTitle: true)
                     .frame(width: 712).padding(24).background(.white).environment(\.colorScheme, .light))
                 renderer.scale = 1
                 if let image = renderer.nsImage, let tiff = image.tiffRepresentation,

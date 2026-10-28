@@ -8,17 +8,17 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 20) {
                 Text(greeting)
-                    .font(.system(size: 28, weight: .semibold))
-                    .kerning(-0.7)
+                    .font(.system(size: 24, weight: .semibold))
+                    .kerning(-0.5)
                     .enter(appeared, delay: 0)
 
                 NextCard()
                     .enter(appeared, delay: 0.06)
 
                 if !weekDays.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Caption(text: L("home.thisWeek"))
                         HStack(spacing: 8) {
                             ForEach(weekDays) { day in DayTile(day: day) }
@@ -28,19 +28,19 @@ struct HomeView: View {
                 }
 
                 if !ready.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Caption(text: L("home.ready"))
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                             ForEach(ready, id: \.id) { session in ReadyCard(session: session) }
                         }
                     }
                     .enter(appeared, delay: 0.18)
                 }
             }
-            .frame(maxWidth: 900, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.top, 28)
-            .padding(.bottom, 40)
+            .padding(.horizontal, 28)
+            .frame(maxWidth: 860, alignment: .leading)
+            .padding(.top, 16)
+            .padding(.bottom, 32)
             .frame(maxWidth: .infinity)
         }
         .onAppear { appeared = true }
@@ -58,15 +58,16 @@ struct HomeView: View {
         let calendar = Calendar.current
         let today = Date()
         let todayISO = model.schedule.isoWeekday(of: today)
-        let next = model.nextLecture
         return (1...5).compactMap { weekday in
             let slots = model.courses.flatMap { course in course.slots.filter { $0.weekday == weekday }.map { (course, $0) } }
             guard let (course, slot) = slots.min(by: { $0.1.start < $1.1.start }),
                   let date = calendar.date(byAdding: .day, value: weekday - todayISO, to: today) else { return nil }
             let done = model.sessions.contains { $0.courseID == course.id && calendar.isDate($0.date, inSameDayAs: date) }
-            let isNext = next.map { $0.course.id == course.id && calendar.isDate($0.start, inSameDayAs: date) } ?? false
-            let name = weekday == todayISO ? L("time.today") : date.formatted(.dateTime.weekday(.abbreviated))
-            return WeekDay(id: weekday, name: name, course: course, time: slot.start.description, done: done, next: isNext,
+            let name = weekday == todayISO ? L("time.today")
+                : weekday == todayISO + 1 ? L("time.tomorrow")
+                : date.formatted(.dateTime.weekday(.abbreviated))
+            return WeekDay(id: weekday, name: name, course: course, time: slot.start.description, done: done,
+                           isToday: weekday == todayISO,
                            session: model.sessions.first { $0.courseID == course.id && calendar.isDate($0.date, inSameDayAs: date) })
         }
     }
@@ -83,7 +84,7 @@ struct WeekDay: Identifiable {
     let course: Course
     let time: String
     let done: Bool
-    let next: Bool
+    let isToday: Bool
     let session: Session?
 }
 
@@ -92,7 +93,7 @@ private struct Caption: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 12, weight: .medium))
             .foregroundStyle(Theme.tertiary)
     }
 }
@@ -103,39 +104,39 @@ private struct NextCard: View {
     var body: some View {
         let next = model.nextLecture
         let current = model.currentLecture
-        HStack(spacing: 20) {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 12) {
-                    CoverView(course: current ?? next?.course, width: 56, height: 56, radius: 16)
-                    VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    CoverView(course: current ?? next?.course, width: 40, height: 40, radius: 11)
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(current?.name ?? next?.course.name ?? L("home.noSchedule"))
-                            .font(.system(size: 20, weight: .semibold))
-                            .kerning(-0.4)
+                            .font(.system(size: 16, weight: .semibold))
+                            .kerning(-0.2)
                         Text(subtitle(current: current, next: next))
-                            .font(.system(size: 14))
+                            .font(.system(size: 12.5))
                             .foregroundStyle(Theme.secondary)
                     }
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Button { model.record(current ?? next?.course) } label: {
                         Label(L("home.record"), systemImage: "mic.fill")
                     }
-                    .buttonStyle(PillButtonStyle(kind: .primary, height: 46))
+                    .buttonStyle(PillButtonStyle(kind: .primary))
                     .keyboardShortcut("r", modifiers: [.command, .option])
 
                     Button { model.record(nil, meeting: true) } label: {
                         Label(L("home.meeting"), systemImage: "person.2")
                     }
-                    .buttonStyle(PillButtonStyle(kind: .outline, height: 46))
+                    .buttonStyle(PillButtonStyle(kind: .outline))
                 }
             }
             Spacer(minLength: 0)
             SoundToNotes()
-                .frame(width: 300, height: 102)
+                .frame(width: 220, height: 75)
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 26)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Theme.card))
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.card))
     }
 
     private func subtitle(current: Course?, next: (course: Course, start: Date)?) -> String {
@@ -153,11 +154,11 @@ private struct DayTile: View {
         Button {
             if let session = day.session { model.open(session) }
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(day.name)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.tertiary)
+                        .font(.system(size: 11.5, weight: day.isToday ? .semibold : .medium))
+                        .foregroundStyle(day.isToday ? Theme.ink : Theme.tertiary)
                     Spacer(minLength: 0)
                     if day.done {
                         Image(systemName: "checkmark")
@@ -167,21 +168,20 @@ private struct DayTile: View {
                 }
                 Capsule()
                     .fill(Theme.color(of: day.course, among: model.courses))
-                    .frame(height: 4)
-                VStack(alignment: .leading, spacing: 0) {
+                    .frame(height: 3)
+                VStack(alignment: .leading, spacing: 1) {
                     Text(day.course.shortName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(2, reservesSpace: true)
                     Text(day.time)
-                        .font(.system(size: 12).monospacedDigit())
+                        .font(.system(size: 11.5).monospacedDigit())
                         .foregroundStyle(Theme.tertiary)
                 }
             }
-            .padding(12)
+            .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(day.next ? Theme.ink : Theme.line, lineWidth: 1.5))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line))
             .contentShape(Rectangle())
         }
         .buttonStyle(LiftButtonStyle())
@@ -195,26 +195,26 @@ private struct ReadyCard: View {
 
     var body: some View {
         Button { model.open(session) } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 GeometryReader { proxy in
                     CoverView(course: model.course(session.courseID), session: session,
-                              width: proxy.size.width, height: 132, radius: 12)
+                              width: proxy.size.width, height: 92, radius: 9)
                 }
-                .frame(height: 132)
+                .frame(height: 92)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(SessionText.title(session, model: model))
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(2, reservesSpace: true)
                     Text(SessionText.meta(session, model: model))
-                        .font(.system(size: 12))
+                        .font(.system(size: 11.5))
                         .foregroundStyle(Theme.tertiary)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 2)
             }
-            .padding(EdgeInsets(top: 8, leading: 8, bottom: 12, trailing: 8))
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.line))
+            .padding(EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: 6))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line))
             .contentShape(Rectangle())
         }
         .buttonStyle(LiftButtonStyle())

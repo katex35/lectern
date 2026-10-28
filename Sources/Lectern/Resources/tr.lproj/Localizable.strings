@@ -58,7 +58,7 @@
 "session.tab.notes" = "Notlar";
 "session.tab.transcript" = "Transkript";
 "session.tab.questions" = "Sorular";
-"session.notesPending" = "Notlar henüz yazılmadı.";
+"session.notesPending" = "Ders notu henüz hazır değil.";
 "session.transcriptPending" = "Transkript henüz hazır değil.";
 "session.questionsPending" = "Sorular henüz hazırlanmadı.";
 "session.playFrom" = "%@ anından dinle";
@@ -71,7 +71,7 @@
 "menu.toggleSidebar" = "Kenar çubuğu";
 "menu.openWindow" = "Pencereyi aç";
 
-"top.noModel" = "Hesap bağlı değil";
+"top.noModel" = "Hesap bağla";
 
 "settings.accounts" = "Hesaplar";
 "settings.general" = "Genel";
