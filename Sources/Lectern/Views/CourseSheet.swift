@@ -193,6 +193,8 @@ struct CourseSheet: View {
             try model.library.save(course)
             model.reload()
             Task { await Reminders.shared.plan() }
+            let model = model
+            Task { await Covers.draw(for: course, model: model) }
             dismiss()
         } catch {
             self.error = error.localizedDescription

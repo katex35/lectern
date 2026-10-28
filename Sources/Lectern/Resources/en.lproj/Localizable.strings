@@ -148,3 +148,5 @@
 "photos.added" = "%ld photos added";
 "photos.unmatched" = "%ld photos match no lecture's time";
 "session.tab.chat" = "Chat";
+"course.redrawCover" = "Draw the cover again";
+"covers.failed" = "The cover could not be drawn";

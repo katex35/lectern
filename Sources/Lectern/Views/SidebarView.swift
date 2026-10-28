@@ -142,6 +142,9 @@ private struct CourseRow: View {
         .buttonStyle(RowButtonStyle())
         .contextMenu {
             Button(L("course.edit")) { model.edit(course) }
+            if Covers.maker() != nil {
+                Button(L("course.redrawCover")) { Task { await Covers.draw(for: course, model: model, replacing: true) } }
+            }
         }
     }
 }

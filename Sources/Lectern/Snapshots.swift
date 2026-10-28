@@ -111,6 +111,15 @@ enum Snapshots {
         NSApp.terminate(nil)
     }
 
+    /// Draws a cover by handing back one already in the test library.
+    struct FakeImageMaker: ImageMaker {
+        func image(prompt: String) async throws -> Data {
+            try await Task.sleep(nanoseconds: 600_000_000)
+            let root = ProcessInfo.processInfo.environment["LECTERN_LIBRARY"].map { URL(fileURLWithPath: $0) } ?? Library.defaultRoot
+            return try Data(contentsOf: root.appendingPathComponent("Covers/VERIBILIMI.jpg"))
+        }
+    }
+
     /// Answers every piece after a moment, so the progress can be seen.
     struct FakeTranscriber: Transcribing {
         func transcribe(_ audio: URL, languages: [String], vocabulary: [String]) async throws -> String {

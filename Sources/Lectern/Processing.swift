@@ -143,6 +143,10 @@ final class ProcessingCenter {
                 withAnimation(Theme.ease) {
                     self?.states[ref] = outcome.needsTranscriber ? .needsGemini : outcome.needsWriter ? .needsWriter : nil
                 }
+                // notes give the lecture a topic, and the topic its own cover
+                if let model = self?.model, let fresh = model.session(ref) {
+                    Task { await Covers.draw(for: fresh, model: model) }
+                }
             } catch {
                 withAnimation(Theme.ease) { self?.states[ref] = .failed(error.localizedDescription) }
             }
