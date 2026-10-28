@@ -65,8 +65,9 @@ struct ScheduleView: View {
         return (1...(weekend ? 7 : 5)).compactMap { weekday in
             guard let date = calendar.date(byAdding: .day, value: weekday - 1, to: monday) else { return nil }
             let lectures = model.courses.flatMap { course in
-                course.slots.filter { $0.weekday == weekday && $0.isValid }.map { slot in
-                    ScheduleDay.Lecture(course: course, slot: slot,
+                course.slots.enumerated().filter { $0.element.weekday == weekday && $0.element.isValid }.map { index, slot in
+                    // a second recording that day joins the same session, so every slot of the day shows it
+                    ScheduleDay.Lecture(id: "\(course.id)-\(index)", course: course, slot: slot,
                                         session: model.sessions.first { $0.courseID == course.id && calendar.isDate($0.date, inSameDayAs: date) })
                 }
             }
@@ -74,10 +75,10 @@ struct ScheduleView: View {
         }
     }
 
-    /// "6. hafta · 26 - 30 Ekim"
+    /// "6. hafta · 26 - 30 Ekim", to Sunday when the grid shows the weekend
     private var weekLabel: String {
         let calendar = Calendar.current
-        let last = calendar.date(byAdding: .day, value: 4, to: monday) ?? monday
+        let last = days.last?.date ?? monday
         let sameMonth = calendar.isDate(monday, equalTo: last, toGranularity: .month)
         let first = sameMonth ? monday.formatted(.dateTime.day()) : monday.formatted(.dateTime.day().month(.wide))
         let range = "\(first) - \(last.formatted(.dateTime.day().month(.wide)))"
@@ -88,10 +89,11 @@ struct ScheduleView: View {
 
 struct ScheduleDay: Identifiable {
     struct Lecture: Identifiable {
+        /// The course and the slot's place in its list; two equal slots stay two.
+        let id: String
         let course: Course
         let slot: ScheduleSlot
         let session: Session?
-        var id: String { "\(course.id)-\(slot.weekday)-\(slot.start)" }
     }
 
     let weekday: Int

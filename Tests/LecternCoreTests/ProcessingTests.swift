@@ -132,6 +132,10 @@ private final class FakeWriter: LanguageModelProvider, @unchecked Sendable {
     let kind = ProviderKind.anthropic
     private let lock = NSLock()
     private var sent: [CompletionRequest] = []
+    /// Runs while the dates are being answered, as another run would meanwhile.
+    var whileFindingDates: (() -> Void)?
+    /// Fails the dates request with this.
+    var datesError: ProviderError?
 
     var requests: [CompletionRequest] { lock.withLock { sent } }
 
@@ -139,6 +143,12 @@ private final class FakeWriter: LanguageModelProvider, @unchecked Sendable {
 
     func stream(_ request: CompletionRequest) -> AsyncThrowingStream<CompletionEvent, Error> {
         lock.withLock { sent.append(request) }
+        if request.system.contains("list every date") {
+            whileFindingDates?()
+            if let datesError {
+                return AsyncThrowingStream { $0.finish(throwing: datesError) }
+            }
+        }
         let answer = request.system.contains("practice questions") ? "# Sorular\n1. Ne?"
             : request.system.contains("list every date") ? "```json\n{\"dates\": [{\"kind\": \"exam\", \"title\": \"Vize\", \"date\": \"2027-01-20\", \"time\": \"10:00\", \"quote\": \"words of b-0\", \"at\": \"00:00:14\"}]}\n```"
             : "# Geri yayılım\n## Giriş"
@@ -237,6 +247,36 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertEqual(library.mentionedDates(of: session).map(\.decision), [.added])
         XCTAssertEqual(library.mentionedDates(of: session).first?.id, found.id)
         XCTAssertEqual(library.courses().first?.events.count, 1)
+    }
+
+    func testReadingDatesKeepsWhatAnotherRunWroteMeanwhile() async throws {
+        let session = try makeSession()
+        let writer = FakeWriter()
+        let processor = SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
+                                         notesLanguage: "tr", pieceLength: 6)
+        _ = try await processor.run(session, course: course) { _ in }
+        let manifest = library.folder(of: session).appendingPathComponent(".lectern/made-from.json")
+        // while the dates are read again, another run records new notes
+        writer.whileFindingDates = {
+            guard let data = try? Data(contentsOf: manifest),
+                  var saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+            saved["notesPhotos"] = ["IMG_9.jpg"]
+            try? JSONSerialization.data(withJSONObject: saved).write(to: manifest)
+        }
+        try await processor.findDates(session, course: course)
+        XCTAssertTrue(try String(contentsOf: manifest, encoding: .utf8).contains("IMG_9.jpg"))
+    }
+
+    func testDatesThatCannotBeReadDoNotFailTheNotes() async throws {
+        let session = try makeSession()
+        let writer = FakeWriter()
+        writer.datesError = .refused("no")
+        let outcome = try await SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
+                                                 notesLanguage: "tr", pieceLength: 6).run(session, course: course) { _ in }
+        XCTAssertEqual(outcome, SessionProcessor.Outcome())
+        XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
+        // left for a later try
+        XCTAssertTrue(SessionProcessor.needsDates(session, in: library))
     }
 
     func testMeetingsAreNotReadForDates() async throws {

@@ -180,7 +180,17 @@ final class AppModel {
     /// Dates found in lectures that are still ahead and not decided on, soonest first. A date said in
     /// several lectures shows once, from the latest; one the course already has does not show.
     var mentionedDates: [(session: Session, date: MentionedDate)] {
-        _ = revision
+        // read from the files once per reload, not on every redraw
+        let day = Calendar.current.startOfDay(for: Date())
+        if let cached = mentionedCache, cached.revision == revision, cached.day == day { return cached.dates }
+        let dates = readMentionedDates()
+        mentionedCache = (revision, day, dates)
+        return dates
+    }
+
+    @ObservationIgnored private var mentionedCache: (revision: Int, day: Date, dates: [(session: Session, date: MentionedDate)])?
+
+    private func readMentionedDates() -> [(session: Session, date: MentionedDate)] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         var found: [(session: Session, date: MentionedDate)] = []

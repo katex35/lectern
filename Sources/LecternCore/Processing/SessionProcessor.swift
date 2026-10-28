@@ -126,7 +126,9 @@ public struct SessionProcessor: Sendable {
         }
         if needsDates {
             progress(.findingDates)
-            try await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder, state: &state)
+            // the notes are what the run is for; dates that could not be read now are tried again later
+            try? await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder,
+                                 from: state.manifest.transcript)
         }
         return outcome
     }
@@ -142,19 +144,24 @@ public struct SessionProcessor: Sendable {
     public func findDates(_ session: Session, course: Course?) async throws {
         let session = library.reload(session) ?? session
         let folder = library.folder(of: session)
-        var state = Self.state(of: session, in: folder)
+        let state = Self.state(of: session, in: folder)
         guard state.transcriptCurrent, let transcript = try? String(contentsOf: folder.appendingPathComponent("transcript.txt"), encoding: .utf8),
               let writer = try await writer() else { return }
-        try await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder, state: &state)
+        try await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder,
+                            from: state.manifest.transcript)
     }
 
-    private func findDates(_ session: Session, course: Course?, transcript: String, writer: Writer, folder: URL, state: inout State) async throws {
+    /// - Parameter recordings: what `transcript` was made from, recorded as what the dates were read from.
+    private func findDates(_ session: Session, course: Course?, transcript: String, writer: Writer, folder: URL,
+                           from recordings: [String]) async throws {
         let answer = try await write(writer, system: LectureDates.prompt(language: notesLanguage),
                                      input: NotePrompts.lecture(session: session, course: course, transcript: transcript), limit: 2000)
         let found = LectureDates.parse(answer, lectureDate: session.date, transcript: transcript)
         try library.save(LectureDates.merge(found, keeping: library.mentionedDates(of: session)), for: session)
-        state.manifest.dates = state.manifest.transcript
-        try state.manifest.save(in: folder)
+        // read again: another run may have written notes or a new transcript while the model was answering
+        var manifest = Self.state(of: library.reload(session) ?? session, in: folder).manifest
+        manifest.dates = recordings
+        try manifest.save(in: folder)
     }
 
     // MARK: what is done
