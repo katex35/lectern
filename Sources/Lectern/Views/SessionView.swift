@@ -379,14 +379,20 @@ struct Thumbnail: View {
         .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
         .task(id: url) {
             let url = url
-            let loaded = await Task.detached(priority: .userInitiated) { Thumbnails.image(url, pixels: 900) }.value
-            withAnimation(Theme.quick) { image = loaded }
+            let loaded = await Task.detached(priority: .userInitiated) { Thumbnails.Loaded(image: Thumbnails.image(url, pixels: 900)) }.value
+            withAnimation(Theme.quick) { image = loaded.image }
         }
     }
 }
 
 enum Thumbnails {
     private static let cache = NSCache<NSURL, NSImage>()
+
+    /// Carries a finished thumbnail out of the background task. Older SDKs do not mark NSImage as
+    /// Sendable; this one is made once and never changed afterwards.
+    struct Loaded: @unchecked Sendable {
+        let image: NSImage?
+    }
 
     static func image(_ url: URL, pixels: Int) -> NSImage? {
         if let cached = cache.object(forKey: url as NSURL) { return cached }
