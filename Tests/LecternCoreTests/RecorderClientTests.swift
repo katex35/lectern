@@ -50,6 +50,14 @@ final class RecorderClientTests: XCTestCase {
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice
         try p.run()
+        // a slow launch (memory pressure) must not eat into the recording: wait until audio flows
+        var output = Data()
+        while !String(decoding: output, as: UTF8.self).contains("\"event\":\"ready\"") {
+            let chunk = pipe.fileHandleForReading.availableData
+            XCTAssertFalse(chunk.isEmpty, "helper ended before it was ready")
+            if chunk.isEmpty { return }
+            output.append(chunk)
+        }
         try await Task.sleep(nanoseconds: 1_000_000_000)
         try pipe.fileHandleForReading.close()
         try await Task.sleep(nanoseconds: 2_000_000_000)
