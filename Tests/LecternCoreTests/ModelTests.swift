@@ -45,6 +45,17 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(next?.start, date(2026, 11, 2, 13, 30))
     }
 
+    func testUpcomingLecturesStayInTheTerm() {
+        let s = Schedule(calendar: calendar)
+        // Tuesday 27 October, 10:00: the Vision lecture of that morning has started already
+        let all = s.upcoming(from: date(2026, 10, 27, 10), days: 14, courses: [vision, research])
+        XCTAssertEqual(all.map { $0.start }, [date(2026, 11, 2, 13, 30), date(2026, 11, 3, 9, 55),
+                                             date(2026, 11, 9, 13, 30), date(2026, 11, 10, 9, 55)])
+        let term = Semester(name: "Fall", start: date(2026, 9, 16), end: date(2026, 11, 2))
+        let inTerm = s.upcoming(from: date(2026, 10, 27, 10), days: 14, courses: [vision, research], semester: term)
+        XCTAssertEqual(inTerm.map { $0.match.course.id }, ["ARASTIRMA"])
+    }
+
     func testNewCourseIDs() {
         XCTAssertEqual(Course.newID(code: "cse 5217", name: "Vision", taken: []), "CSE-5217")
         XCTAssertEqual(Course.newID(code: "", name: "Veri Bilimi", taken: []), "VERI-BILIMI")

@@ -136,3 +136,11 @@
 "settings.semester.start" = "Başlangıç";
 "settings.semester.hasEnd" = "Bitiş tarihi var";
 "settings.semester.end" = "Bitiş";
+"reminder.record" = "Kayda başla";
+"reminder.body" = "%ld dakika sonra başlıyor.";
+"reminder.bodyRoom" = "%1$ld dakika sonra, %2$@ dersliğinde.";
+"settings.reminders.title" = "Hatırlatma";
+"settings.reminders" = "Ders başlamadan haber ver";
+"settings.reminders.lead" = "Ne kadar önce";
+"settings.reminders.appOnly" = "Bildirimler Lectern.app açıkken çalışır.";
+"settings.reminders.denied" = "Bildirim izni verilmedi. Sistem Ayarları > Bildirimler'den açabilirsin.";

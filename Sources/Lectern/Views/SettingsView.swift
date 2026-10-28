@@ -37,8 +37,46 @@ private struct GeneralPane: View {
                     .foregroundStyle(Theme.secondary)
             }
             SemesterSection()
+            ReminderSection()
         }
         .formStyle(.grouped)
+    }
+}
+
+/// A notice before each lecture; macOS asks for permission the first time it is turned on.
+private struct ReminderSection: View {
+    @AppStorage(Reminders.enabledKey) private var enabled = false
+    @AppStorage(Reminders.leadKey) private var lead = 10
+    @State private var denied = false
+
+    var body: some View {
+        Section {
+            Toggle(L("settings.reminders"), isOn: $enabled)
+                .disabled(!Reminders.shared.isAvailable)
+            Picker(L("settings.reminders.lead"), selection: $lead) {
+                ForEach([5, 10, 15, 30], id: \.self) { Text(L("time.minutes", $0)).tag($0) }
+            }
+            .disabled(!enabled)
+        } header: {
+            Text(L("settings.reminders.title"))
+        } footer: {
+            if !Reminders.shared.isAvailable {
+                Text(L("settings.reminders.appOnly")).foregroundStyle(Theme.tertiary)
+            } else if denied {
+                Text(L("settings.reminders.denied")).foregroundStyle(Theme.tertiary)
+            }
+        }
+        .onChange(of: enabled) {
+            Task {
+                if enabled {
+                    denied = !(await Reminders.shared.enable())
+                    if denied { enabled = false }
+                } else {
+                    await Reminders.shared.plan()
+                }
+            }
+        }
+        .onChange(of: lead) { Task { await Reminders.shared.plan() } }
     }
 }
 
@@ -82,6 +120,8 @@ private struct SemesterSection: View {
         var settings = model.library.settings()
         settings.semester = Semester(name: name.trimmingCharacters(in: .whitespaces), start: start, end: hasEnd ? end : nil)
         try? model.library.save(settings)
+        // lectures outside the term get no notice
+        Task { await Reminders.shared.plan() }
     }
 }
 

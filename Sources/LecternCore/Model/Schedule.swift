@@ -60,6 +60,34 @@ public struct Schedule: Sendable {
         return best.map { ($0.0, $0.1) }
     }
 
+    /// Every lecture start from `date` up to `days` days ahead, earliest first; when a term is set,
+    /// only the ones inside it.
+    public func upcoming(from date: Date, days: Int, courses: [Course], semester: Semester? = nil) -> [(match: Match, start: Date)] {
+        guard let limit = calendar.date(byAdding: .day, value: days, to: date) else { return [] }
+        var starts: [(Match, Date)] = []
+        for course in courses {
+            for slot in course.slots where slot.isValid {
+                var cursor = date
+                while let start = nextDate(of: slot, after: cursor), start <= limit {
+                    if inTerm(start, semester) { starts.append((Match(course: course, slot: slot), start)) }
+                    cursor = start
+                }
+            }
+        }
+        return starts.sorted { $0.1 < $1.1 }.map { ($0.0, $0.1) }
+    }
+
+    private func inTerm(_ date: Date, _ semester: Semester?) -> Bool {
+        guard let semester else { return true }
+        if date < calendar.startOfDay(for: semester.start) { return false }
+        // the end day itself is still in the term
+        if let end = semester.end, let after = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)),
+           date >= after {
+            return false
+        }
+        return true
+    }
+
     public func nextDate(of slot: ScheduleSlot, after date: Date) -> Date? {
         var comps = DateComponents()
         comps.weekday = slot.weekday == 7 ? 1 : slot.weekday + 1  // back to Gregorian numbering

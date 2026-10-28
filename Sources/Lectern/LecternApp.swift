@@ -51,6 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    /// Notices are planned a week ahead; coming back to the app moves that week along.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        Task { @MainActor in await Reminders.shared.plan() }
+    }
 }
 
 struct RootView: View {

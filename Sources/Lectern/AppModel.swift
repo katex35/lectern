@@ -51,6 +51,7 @@ final class AppModel {
             }
         }
         refreshAccounts()
+        Reminders.shared.start(self)
     }
 
     func refreshAccounts() {
