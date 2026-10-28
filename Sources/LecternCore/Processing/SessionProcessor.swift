@@ -38,7 +38,8 @@ public struct SessionProcessor: Sendable {
 
     let library: Library
     let transcriber: (any Transcribing)?
-    let writer: Writer?
+    /// Found only when notes are due, so an account that cannot be reached does not hold up the transcript.
+    let writer: @Sendable () async throws -> Writer?
     /// The language notes and questions are written in, as a BCP 47 code.
     let notesLanguage: String
     let pieceLength: TimeInterval
@@ -46,9 +47,15 @@ public struct SessionProcessor: Sendable {
 
     public init(library: Library, transcriber: (any Transcribing)?, writer: Writer?, notesLanguage: String,
                 pieceLength: TimeInterval = 300, parallel: Int = 3) {
+        self.init(library: library, transcriber: transcriber, findWriter: { writer }, notesLanguage: notesLanguage,
+                  pieceLength: pieceLength, parallel: parallel)
+    }
+
+    public init(library: Library, transcriber: (any Transcribing)?, findWriter: @escaping @Sendable () async throws -> Writer?,
+                notesLanguage: String, pieceLength: TimeInterval = 300, parallel: Int = 3) {
         self.library = library
         self.transcriber = transcriber
-        self.writer = writer
+        self.writer = findWriter
         self.notesLanguage = notesLanguage
         self.pieceLength = pieceLength
         self.parallel = parallel
@@ -63,12 +70,14 @@ public struct SessionProcessor: Sendable {
         if !state.transcriptCurrent {
             guard let transcriber else {
                 outcome.needsTranscriber = true
-                outcome.needsWriter = writer == nil
+                outcome.needsWriter = ((try? await writer()) ?? nil) == nil
                 return outcome
             }
             progress(.preparing)
-            let transcript = try await transcribe(session, course: course, folder: folder, with: transcriber, progress: progress)
-            try transcript.write(to: transcriptURL, atomically: true, encoding: .utf8)
+            let earlier = try? String(contentsOf: transcriptURL, encoding: .utf8)
+            let transcript = try await transcribe(session, course: course, folder: folder, with: transcriber,
+                                                  keeping: earlier, covered: Set(state.manifest.transcript), progress: progress)
+            try replace(transcriptURL, with: transcript, in: folder)
             state.manifest.transcript = state.recordings
             try state.manifest.save(in: folder)
             // the text of each piece is kept, the cut audio is only needed until now
@@ -87,7 +96,7 @@ public struct SessionProcessor: Sendable {
         let needsQuestions = needsNotes || !FileManager.default.fileExists(atPath: questionsURL.path)
             || state.manifest.questions != state.manifest.transcript
         guard needsNotes || needsQuestions else { return outcome }
-        guard let writer else {
+        guard let writer = try await writer() else {
             outcome.needsWriter = true
             return outcome
         }
@@ -96,7 +105,7 @@ public struct SessionProcessor: Sendable {
             let notes = try await write(writer, system: NotePrompts.notes(language: notesLanguage),
                                         input: NotePrompts.lecture(session: session, course: course, transcript: transcript),
                                         limit: 16000)
-            try notes.write(to: notesURL, atomically: true, encoding: .utf8)
+            try replace(notesURL, with: notes, in: folder)
             state.manifest.notes = state.manifest.transcript
             try state.manifest.save(in: folder)
         }
@@ -105,7 +114,7 @@ public struct SessionProcessor: Sendable {
             let notes = (try? String(contentsOf: notesURL, encoding: .utf8)) ?? transcript
             let questions = try await write(writer, system: NotePrompts.questions(language: notesLanguage),
                                             input: notes, limit: 8000)
-            try questions.write(to: questionsURL, atomically: true, encoding: .utf8)
+            try replace(questionsURL, with: questions, in: folder)
             state.manifest.questions = state.manifest.transcript
             try state.manifest.save(in: folder)
         }
@@ -167,8 +176,21 @@ public struct SessionProcessor: Sendable {
 
     // MARK: transcript
 
+    /// Named after the piece length: pieces cut to another length cover other stretches of time.
     func piecesFolder(_ folder: URL) -> URL {
-        folder.appendingPathComponent(".lectern/pieces", isDirectory: true)
+        folder.appendingPathComponent(".lectern/pieces-\(Int(pieceLength))", isDirectory: true)
+    }
+
+    /// Writes `text` to `url`, keeping the file it replaces in `.lectern/previous` so a hand edit is never just lost.
+    func replace(_ url: URL, with text: String, in folder: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            let previous = folder.appendingPathComponent(".lectern/previous", isDirectory: true)
+            try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+            let backup = previous.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.removeItem(at: backup)
+            try FileManager.default.copyItem(at: url, to: backup)
+        }
+        try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
     struct Piece: Sendable {
@@ -178,14 +200,29 @@ public struct SessionProcessor: Sendable {
         var text: URL
     }
 
+    /// - Parameters:
+    ///   - earlier: the transcript there is now. Recordings it covers that have no pieces of their own
+    ///     (an imported lecture, perhaps without its audio) keep this text instead of being transcribed again.
+    ///   - covered: the recordings `earlier` was made from.
     func transcribe(_ session: Session, course: Course?, folder: URL, with transcriber: any Transcribing,
+                    keeping earlier: String? = nil, covered: Set<String> = [],
                     progress: @escaping @Sendable (ProcessingProgress) -> Void) async throws -> String {
         let pieces = piecesFolder(folder)
+        let cached = Set(((try? FileManager.default.contentsOfDirectory(atPath: pieces.path)) ?? []).filter { $0.hasSuffix(".txt") })
+        var kept: String?
         var all: [Piece] = []
         var offset: TimeInterval = 0
         for recording in session.orderedRecordings where !recording.inProgress {
             let source = folder.appendingPathComponent(recording.file)
-            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            let exists = FileManager.default.fileExists(atPath: source.path)
+            let base = (recording.file as NSString).deletingPathExtension
+            if let earlier, covered.contains(recording.file), !cached.contains(where: { $0.hasPrefix("\(base)-") }) {
+                kept = earlier
+                let length = exists ? (try? await AVURLAsset(url: source).load(.duration).seconds) : nil
+                offset += length ?? recording.duration ?? 0
+                continue
+            }
+            guard exists else { continue }
             let text = { (piece: URL) in piece.deletingPathExtension().appendingPathExtension("txt") }
             let chunks = try await AudioChunker.split(source, length: pieceLength, into: pieces) {
                 !FileManager.default.fileExists(atPath: text($0).path)
@@ -195,7 +232,7 @@ public struct SessionProcessor: Sendable {
             }
             offset += chunks.reduce(0) { $0 + $1.duration }
         }
-        guard !all.isEmpty else { throw ProcessingError.noAudio }
+        guard !all.isEmpty || kept != nil else { throw ProcessingError.noAudio }
 
         let languages = course.map { [$0.language] } ?? []
         let vocabulary = [course?.name, course?.instructor].compactMap { $0 }
@@ -222,10 +259,12 @@ public struct SessionProcessor: Sendable {
             }
         }
 
-        return all.compactMap { piece -> String? in
+        let new = all.compactMap { piece -> String? in
             guard let text = try? String(contentsOf: piece.text, encoding: .utf8), !text.isEmpty else { return nil }
             return "[\(Self.stamp(piece.start))]\n\(text)"
-        }.joined(separator: "\n\n") + "\n"
+        }
+        let parts = [kept?.trimmingCharacters(in: .whitespacesAndNewlines)].compactMap { $0 }.filter { !$0.isEmpty } + new
+        return parts.joined(separator: "\n\n") + "\n"
     }
 
     /// 1:05:00 as "01:05:00".
@@ -259,7 +298,7 @@ public struct SessionProcessor: Sendable {
 
 /// Runs `body` again after a temporary failure: when told, after the server's delay, otherwise after
 /// 2, 4 and 8 seconds. A usage limit or a rejected key is not retried.
-func retrying<T: Sendable>(attempts: Int = 4, _ body: @Sendable () async throws -> T) async throws -> T {
+public func retrying<T: Sendable>(attempts: Int = 4, _ body: @Sendable () async throws -> T) async throws -> T {
     var attempt = 0
     while true {
         do {

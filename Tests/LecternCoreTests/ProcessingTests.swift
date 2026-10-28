@@ -193,7 +193,7 @@ final class SessionProcessorTests: XCTestCase {
         // a.m4a is cut in its quiet middle; b.m4a starts at 14 s on the session timeline
         XCTAssertEqual(transcript, "[00:00:00]\nwords of a-0 in tr\n\n[00:00:07]\nwords of a-1 in tr\n\n[00:00:14]\nwords of b-0 in tr\n")
         XCTAssertEqual(transcriber.called.count, 3)
-        let left = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent(".lectern/pieces").path)
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent(".lectern/pieces-6").path)
         XCTAssertEqual(Set(left), ["a-0.txt", "a-1.txt", "b-0.txt"])
         XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
         XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("notes.md"), encoding: .utf8), "# Geri yayılım\n## Giriş\n")
@@ -234,7 +234,7 @@ final class SessionProcessorTests: XCTestCase {
     func testPiecesAlreadyTranscribedAreNotSentAgain() async throws {
         let session = try makeSession()
         let folder = library.folder(of: session)
-        let pieces = folder.appendingPathComponent(".lectern/pieces")
+        let pieces = folder.appendingPathComponent(".lectern/pieces-6")
         try FileManager.default.createDirectory(at: pieces, withIntermediateDirectories: true)
         try "kept".write(to: pieces.appendingPathComponent("a-0.txt"), atomically: true, encoding: .utf8)
         let transcriber = FakeTranscriber()
@@ -268,6 +268,42 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertTrue(transcript.hasSuffix("[00:00:22]\nwords of c-0 in tr\n"))
         XCTAssertEqual(writer.requests.count, 4)
         XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
+    }
+
+    func testAnImportedTranscriptIsKeptWhenTheLectureGoesOn() async throws {
+        var session = try makeSession()
+        let folder = library.folder(of: session)
+        // imported: text but no pieces, and the first recording's audio was not copied
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("a.m4a"))
+        for name in ["transcript.txt", "notes.md", "questions.md"] {
+            try "eski \(name)".write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
+        try writeLecture(folder.appendingPathComponent("c.m4a"), seconds: 5, silences: [])
+        session.recordings.append(RecordingInfo(file: "c.m4a", start: Date(timeIntervalSince1970: 1_800_002_000), duration: 5))
+
+        let transcriber = FakeTranscriber()
+        _ = try await SessionProcessor(library: library, transcriber: transcriber, writer: .init(provider: FakeWriter(), model: "m"),
+                                       notesLanguage: "tr", pieceLength: 6).run(session, course: course) { _ in }
+        XCTAssertEqual(transcriber.called, ["c-0.m4a"])
+        let transcript = try String(contentsOf: folder.appendingPathComponent("transcript.txt"), encoding: .utf8)
+        // a's 14 s are counted from its saved duration, b's 8 s from the file
+        XCTAssertEqual(transcript, "eski transcript.txt\n\n[00:00:22]\nwords of c-0 in tr\n")
+        let backup = try String(contentsOf: folder.appendingPathComponent(".lectern/previous/notes.md"), encoding: .utf8)
+        XCTAssertEqual(backup, "eski notes.md")
+    }
+
+    func testAWriterThatCannotBeReachedDoesNotHoldUpTheTranscript() async throws {
+        let session = try makeSession()
+        let processor = SessionProcessor(library: library, transcriber: FakeTranscriber(),
+                                         findWriter: { throw ProviderError.network("offline") }, notesLanguage: "tr", pieceLength: 6)
+        do {
+            _ = try await processor.run(session, course: course) { _ in }
+            XCTFail("expected the writer's error")
+        } catch let error as ProviderError {
+            XCTAssertEqual(error, .network("offline"))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: library.folder(of: session).appendingPathComponent("transcript.txt").path))
     }
 
     func testAnImportedSessionCountsAsDone() throws {

@@ -95,7 +95,11 @@ public struct GeminiTranscriber: Sendable {
         if let reason = candidate.finishReason, GeminiProvider.refusalReasons.contains(reason) {
             throw ProviderError.refused("The transcript was blocked (\(reason))")
         }
-        // a piece with nothing said in it comes back without text
-        return (candidate.content?.parts ?? []).compactMap(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (candidate.content?.parts ?? []).compactMap(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        // a piece with nothing said in it comes back finished and empty; empty for any other reason is tried again
+        if text.isEmpty, candidate.finishReason != "STOP" {
+            throw ProviderError.incomplete("The transcript came back empty (\(candidate.finishReason ?? "no reason"))")
+        }
+        return text
     }
 }

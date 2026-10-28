@@ -63,7 +63,7 @@ enum Providers {
 
     /// The model chosen in Settings, else a sensible one from what the account lists.
     private static func pick(_ provider: any LanguageModelProvider) async throws -> SessionProcessor.Writer? {
-        let models = try await provider.models().map(\.id).filter { !$0.contains("transcribe") }
+        let models = try await retrying { try await provider.models() }.map(\.id).filter { !$0.contains("transcribe") }
         if let saved = saved(provider.kind), models.contains(saved) {
             return SessionProcessor.Writer(provider: provider, model: saved)
         }
@@ -132,9 +132,8 @@ final class ProcessingCenter {
                 }
             }
             do {
-                let writer = try await Providers.writer()
-                let processor = SessionProcessor(library: library, transcriber: Providers.transcriber(), writer: writer,
-                                                 notesLanguage: appLanguage)
+                let processor = SessionProcessor(library: library, transcriber: Providers.transcriber(),
+                                                 findWriter: { try await Providers.writer() }, notesLanguage: appLanguage)
                 let outcome = try await processor.run(session, course: course) { progress in
                     Task { @MainActor in
                         guard let self, case .running = self.states[ref] else { return }
