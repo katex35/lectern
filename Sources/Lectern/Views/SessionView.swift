@@ -238,6 +238,7 @@ private struct ProcessingChip: View {
         case .transcribing(let done, let total): return L("process.transcribing", done, total)
         case .writingNotes: return L("process.notes")
         case .writingQuestions: return L("process.questions")
+        case .findingDates: return L("process.dates")
         }
     }
 

@@ -231,13 +231,24 @@ private struct LectureBlock: View {
     }
 }
 
-/// Exams and deadlines of every course, earliest first.
+/// Dates said in lectures waiting for a decision, then the exams and deadlines of every course.
 private struct DatesColumn: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         let dates = CourseDate.upcoming(in: model.courses, from: Calendar.current.startOfDay(for: Date()), days: 120)
+        let mentioned = model.mentionedDates
         VStack(alignment: .leading, spacing: 8) {
+            if !mentioned.isEmpty {
+                Text(L("dates.said"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.tertiary)
+                ForEach(mentioned, id: \.date.id) { item in
+                    MentionCard(session: item.session, date: item.date)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+                Color.clear.frame(height: 6)
+            }
             Text(L("home.upcoming"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.tertiary)
@@ -253,6 +264,82 @@ private struct DatesColumn: View {
     }
 }
 
+/// A date the lecturer gave: the words, where in the lecture, and whether to keep it.
+private struct MentionCard: View {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    let date: MentionedDate
+
+    var body: some View {
+        let course = model.course(session.courseID)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                DateBadge(date: date.date, exam: date.kind == .exam)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(date.title.isEmpty ? L("course.kind.\(date.kind.rawValue)") : date.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Button { model.play(date, in: session) } label: {
+                        HStack(spacing: 3) {
+                            Text(verbatim: course?.shortName ?? "")
+                            if let at = date.at {
+                                Text(verbatim: "·")
+                                Image(systemName: "play.fill").font(.system(size: 7))
+                                Text(at.clock).monospacedDigit()
+                            }
+                        }
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.tertiary)
+                        .lineLimit(1)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("dates.listen"))
+                }
+                Spacer(minLength: 0)
+            }
+            if !date.quote.isEmpty {
+                Text(verbatim: "“\(date.quote)”")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: 0x3F3F3F))
+                    .lineLimit(3)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(hex: 0xF6F6F6)))
+            }
+            HStack(spacing: 4) {
+                Button(L("dates.add")) { model.decide(date, in: session, add: true) }
+                    .buttonStyle(PillButtonStyle(kind: .primary, height: 26))
+                Button(L("dates.ignore")) { model.decide(date, in: session, add: false) }
+                    .buttonStyle(PillButtonStyle(kind: .outline, height: 26))
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line))
+    }
+}
+
+/// The month and day in a small tile, red for an exam.
+private struct DateBadge: View {
+    let date: Date
+    let exam: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(date.formatted(.dateTime.month(.abbreviated)).uppercased())
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(exam ? Color(hex: 0xB91C1C) : Theme.secondary)
+            Text(date.formatted(.dateTime.day()))
+                .font(.system(size: 16, weight: .semibold).monospacedDigit())
+        }
+        .frame(width: 38, height: 40)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(exam ? Color(hex: 0xFFF1F1) : Color(hex: 0xF4F4F4)))
+    }
+}
+
 private struct DateRow: View {
     @Environment(AppModel.self) private var model
     let course: Course
@@ -261,16 +348,7 @@ private struct DateRow: View {
     var body: some View {
         Button { model.edit(course) } label: {
             HStack(spacing: 10) {
-                VStack(spacing: 0) {
-                    Text(date.date.formatted(.dateTime.month(.abbreviated)).uppercased())
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .foregroundStyle(date.kind == .exam ? Color(hex: 0xB91C1C) : Theme.secondary)
-                    Text(date.date.formatted(.dateTime.day()))
-                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
-                }
-                .frame(width: 38, height: 40)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(date.kind == .exam ? Color(hex: 0xFFF1F1) : Color(hex: 0xF4F4F4)))
+                DateBadge(date: date.date, exam: date.kind == .exam)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(date.title.isEmpty ? L("course.kind.\(date.kind.rawValue)") : date.title)
                         .font(.system(size: 13, weight: .semibold))

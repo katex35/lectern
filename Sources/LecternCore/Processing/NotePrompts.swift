@@ -49,7 +49,11 @@ enum NotePrompts {
         var parts: [String] = []
         var about = [course.map { "Course: \($0.name)" } ?? "Meeting: \(session.title)"]
         if let week = session.week { about.append("Week: \(week)") }
-        about.append("Date: \(session.date.formatted(.iso8601.year().month().day()))")
+        // the local day with its name, so "next Wednesday" can be worked out from it
+        let day = DateFormatter()
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.dateFormat = "yyyy-MM-dd, EEEE"
+        about.append("Date: \(day.string(from: session.date))")
         parts.append(about.joined(separator: "\n"))
 
         let offsets = timelineOffsets(session)

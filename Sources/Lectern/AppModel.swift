@@ -98,6 +98,8 @@ final class AppModel {
     func refreshAccounts() {
         Providers.accountsChanged()
         noteModelName = ProviderSummary.noteModel()
+        // lectures written before dates were looked for, now that something may be able to read them
+        processing.findMissingDates()
     }
 
     /// The library given in `LECTERN_LIBRARY`, or ~/Documents/Lectern.
@@ -171,6 +173,57 @@ final class AppModel {
     func text(_ file: String, in session: Session) -> String? {
         _ = revision
         return try? String(contentsOf: folder(of: session).appendingPathComponent(file), encoding: .utf8)
+    }
+
+    // MARK: dates said in lectures
+
+    /// Dates found in lectures that are still ahead and not decided on, soonest first. A date said in
+    /// several lectures shows once, from the latest; one the course already has does not show.
+    var mentionedDates: [(session: Session, date: MentionedDate)] {
+        _ = revision
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var found: [(session: Session, date: MentionedDate)] = []
+        // newest lectures first, so the first of each kind of date is the latest mention
+        for session in sessions where session.courseID != nil {
+            let known = course(session.courseID)?.events ?? []
+            for date in library.mentionedDates(of: session) where date.decision == .pending && date.date >= today {
+                let same = { (other: Date, kind: CourseDate.Kind) in kind == date.kind && calendar.isDate(other, inSameDayAs: date.date) }
+                if known.contains(where: { same($0.date, $0.kind) }) { continue }
+                if found.contains(where: { $0.session.courseID == session.courseID && same($0.date.date, $0.date.kind) }) { continue }
+                found.append((session, date))
+            }
+        }
+        return found.sorted { $0.date.date < $1.date.date }
+    }
+
+    /// Adds a found date to its course's dates, where reminders pick it up, or sets it aside; the same
+    /// date said in the course's other lectures is decided with it.
+    func decide(_ date: MentionedDate, in session: Session, add: Bool) {
+        let calendar = Calendar.current
+        do {
+            try library.decide(date, in: session, add: add)
+            for other in sessions where other.courseID == session.courseID && other.ref != session.ref {
+                for repeated in library.mentionedDates(of: other)
+                where repeated.decision == .pending && repeated.kind == date.kind && calendar.isDate(repeated.date, inSameDayAs: date.date) {
+                    // already on the course once; the others are only marked
+                    try library.decide(repeated, in: other, add: false)
+                }
+            }
+            withAnimation(Theme.ease) { reload() }
+            if add {
+                Task { await Reminders.shared.plan() }
+                show(UserDefaults.standard.bool(forKey: Reminders.enabledKey) ? L("dates.addedReminded") : L("dates.added"))
+            }
+        } catch {
+            show(error.localizedDescription)
+        }
+    }
+
+    /// Opens the lecture at the moment a date was said.
+    func play(_ date: MentionedDate, in session: Session) {
+        jump = Jump(session: SessionRef(session), source: .transcript, time: date.at)
+        open(session)
     }
 
     // MARK: photos

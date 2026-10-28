@@ -130,6 +130,35 @@ final class ProcessingCenter {
         return !SessionProcessor.isUpToDate(session, in: model.library)
     }
 
+    private var sweeping: Task<Void, Never>?
+
+    /// Reads the last three weeks' lectures for dates when they were transcribed before dates were
+    /// looked for (imports, older versions), one at a time and only when a service can write.
+    func findMissingDates() {
+        guard sweeping == nil, let model else { return }
+        let cutoff = Date().addingTimeInterval(-21 * 86_400)
+        let library = model.library
+        let due = model.sessions.filter { $0.date >= cutoff && SessionProcessor.needsDates($0, in: library) }
+        guard !due.isEmpty else { return }
+        sweeping = Task { [weak self] in
+            defer { self?.sweeping = nil }
+            guard let writer = (try? await Providers.writer()) ?? nil else { return }
+            let processor = SessionProcessor(library: library, transcriber: nil, writer: writer, notesLanguage: Providers.notesLanguage)
+            for session in due {
+                guard let self, !Task.isCancelled else { return }
+                // a lecture being processed reads its dates in that run
+                if self.tasks[SessionRef(session)] != nil { continue }
+                do {
+                    try await processor.findDates(session, course: self.model?.course(session.courseID))
+                } catch {
+                    // the service is out of reach or over its limit; the rest wait for the next launch
+                    return
+                }
+                self.model?.reload()
+            }
+        }
+    }
+
     func process(_ session: Session) {
         let ref = SessionRef(session)
         guard let model else { return }

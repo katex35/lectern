@@ -187,3 +187,10 @@
 "count.questions.one" = "%ld question";
 "count.photos" = "%ld photos";
 "count.photos.one" = "%ld photo";
+"process.dates" = "Looking for dates";
+"dates.said" = "Said in class";
+"dates.add" = "Add to schedule";
+"dates.ignore" = "Ignore";
+"dates.added" = "Added to the schedule";
+"dates.addedReminded" = "Added; a reminder comes the day before";
+"dates.listen" = "Listen to where it was said";

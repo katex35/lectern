@@ -160,7 +160,7 @@ enum Snapshots {
     struct FakeTranscriber: Transcribing {
         func transcribe(_ audio: URL, languages: [String], vocabulary: [String]) async throws -> String {
             try await Task.sleep(nanoseconds: 1_200_000_000)
-            return "Bugün zincir kuralını ve geri yayılımı konuşacağız. Bu kısım sınavda çıkar."
+            return "Bugün zincir kuralını ve geri yayılımı konuşacağız. Bu kısım sınavda çıkar. Üçüncü ödevi gelecek hafta bu saatte teslim edin."
         }
     }
 
@@ -175,7 +175,10 @@ enum Snapshots {
             let photos = (request.messages.first?.text ?? "").split(separator: "\n")
                 .compactMap { line in line.range(of: "board/").map { "![](\(line[$0.lowerBound...]))\n\n" } }
                 .joined()
-            let text = request.system.contains("answer a student's questions")
+            let dueDate = Date().addingTimeInterval(7 * 86_400).formatted(.iso8601.year().month().day())
+            let text = request.system.contains("list every date")
+                ? "{\"dates\": [{\"kind\": \"assignment\", \"title\": \"Ödev 3\", \"date\": \"\(dueDate)\", \"time\": \"13:30\", \"quote\": \"Üçüncü ödevi gelecek hafta bu saatte teslim edin.\", \"at\": \"00:00:00\"}]}"
+                : request.system.contains("answer a student's questions")
                 ? "Zincir kuralı, iç içe işlemlerde türevi adım adım çarpar. Örneğin \\(U = B\\cdot C\\) ve \\(T = A + U\\) ise \\(\\frac{\\partial T}{\\partial B} = \\frac{\\partial T}{\\partial U}\\cdot\\frac{\\partial U}{\\partial B} = C\\) olur.\n"
                 : request.system.contains("practice questions")
                 ? "# Zincir kuralı\n\n1. Zincir kuralı neyi hesaplar?\n> İç değişkenlere göre türevleri çarparak sonucun türevini.\n"

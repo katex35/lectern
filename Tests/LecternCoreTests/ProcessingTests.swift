@@ -139,7 +139,9 @@ private final class FakeWriter: LanguageModelProvider, @unchecked Sendable {
 
     func stream(_ request: CompletionRequest) -> AsyncThrowingStream<CompletionEvent, Error> {
         lock.withLock { sent.append(request) }
-        let answer = request.system.contains("practice questions") ? "# Sorular\n1. Ne?" : "# Geri yayılım\n## Giriş"
+        let answer = request.system.contains("practice questions") ? "# Sorular\n1. Ne?"
+            : request.system.contains("list every date") ? "```json\n{\"dates\": [{\"kind\": \"exam\", \"title\": \"Vize\", \"date\": \"2027-01-20\", \"time\": \"10:00\", \"quote\": \"words of b-0\", \"at\": \"00:00:14\"}]}\n```"
+            : "# Geri yayılım\n## Giriş"
         return AsyncThrowingStream { continuation in
             continuation.yield(.text(answer))
             continuation.yield(.finished(CompletionResult(stop: .complete)))
@@ -204,10 +206,50 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertTrue(notesInput.contains("[00:00:17] Sınavda çıkar"))
         XCTAssertTrue(notesInput.contains("Transcript:\n[00:00:00]"))
         XCTAssertTrue(writer.requests.first?.system.contains("Turkish") == true)
-        XCTAssertEqual(writer.requests.last?.messages.first?.text, "# Geri yayılım\n## Giriş\n")
+        // questions are asked from the notes, dates from the transcript
+        XCTAssertEqual(writer.requests[1].messages.first?.text, "# Geri yayılım\n## Giriş\n")
+        XCTAssertTrue(writer.requests[2].messages.first?.text.contains("Transcript:\n[00:00:00]") == true)
         XCTAssertEqual(seen.all.first, .preparing)
         XCTAssertTrue(seen.all.contains(.transcribing(done: 3, total: 3)))
-        XCTAssertEqual(Array(seen.all.suffix(2)), [.writingNotes, .writingQuestions])
+        XCTAssertEqual(Array(seen.all.suffix(3)), [.writingNotes, .writingQuestions, .findingDates])
+
+        let dates = library.mentionedDates(of: session)
+        XCTAssertEqual(dates.map(\.title), ["Vize"])
+        XCTAssertEqual(dates.first?.kind, .exam)
+        // the quote is in the piece that starts at 14 s
+        XCTAssertEqual(dates.first?.at, 14)
+        XCTAssertFalse(SessionProcessor.needsDates(session, in: library))
+    }
+
+    func testADateAddedGoesToTheCourseAndAFreshReadKeepsTheChoice() async throws {
+        let session = try makeSession()
+        let writer = FakeWriter()
+        let processor = SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
+                                         notesLanguage: "tr", pieceLength: 6)
+        _ = try await processor.run(session, course: course) { _ in }
+        let found = try XCTUnwrap(library.mentionedDates(of: session).first)
+        let course = try XCTUnwrap(library.decide(found, in: session, add: true))
+        XCTAssertEqual(course.events.map(\.id), [found.id])
+        XCTAssertEqual(library.courses().first?.events.first?.title, "Vize")
+
+        // read again (the transcript changed): the same exam keeps its id and stays added, nothing doubles
+        try await processor.findDates(session, course: course)
+        XCTAssertEqual(library.mentionedDates(of: session).map(\.decision), [.added])
+        XCTAssertEqual(library.mentionedDates(of: session).first?.id, found.id)
+        XCTAssertEqual(library.courses().first?.events.count, 1)
+    }
+
+    func testMeetingsAreNotReadForDates() async throws {
+        var meeting = try library.newMeeting(title: "Proje", date: Date(timeIntervalSince1970: 1_800_000_000))
+        let folder = library.folder(of: meeting)
+        try writeLecture(folder.appendingPathComponent("a.m4a"), seconds: 5, silences: [])
+        meeting.recordings = [RecordingInfo(file: "a.m4a", start: meeting.date, duration: 5, inProgress: false)]
+        try library.save(meeting)
+        let writer = FakeWriter()
+        _ = try await SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
+                                       notesLanguage: "tr", pieceLength: 6).run(meeting, course: nil) { _ in }
+        XCTAssertEqual(writer.requests.count, 2)
+        XCTAssertFalse(SessionProcessor.needsDates(meeting, in: library))
     }
 
     func testAnInterruptedRunKeepsFinishedPiecesAndRetriesTemporaryErrors() async throws {
@@ -227,7 +269,7 @@ final class SessionProcessorTests: XCTestCase {
         _ = try await SessionProcessor(library: library, transcriber: again, writer: .init(provider: writer, model: "m"),
                                        notesLanguage: "en", pieceLength: 6).run(session, course: course) { _ in }
         XCTAssertEqual(again.called, [])
-        XCTAssertEqual(writer.requests.count, 2)
+        XCTAssertEqual(writer.requests.count, 3)
         XCTAssertTrue(writer.requests.first?.system.contains("English") == true)
     }
 
@@ -251,14 +293,14 @@ final class SessionProcessorTests: XCTestCase {
         let processor = SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
                                          notesLanguage: "tr", pieceLength: 6)
         _ = try await processor.run(session, course: course) { _ in }
-        XCTAssertEqual(writer.requests.count, 2)
+        XCTAssertEqual(writer.requests.count, 3)
 
         session.photos.append(BoardPhoto(file: "IMG_1.jpg", recording: "a.m4a", time: 3))
         try library.save(session)
         XCTAssertFalse(SessionProcessor.isUpToDate(session, in: library))
         // the processor reads the session again, so an older copy without the photo is enough
         _ = try await processor.run(try makeSessionCopyWithoutPhotos(session), course: course) { _ in }
-        XCTAssertEqual(writer.requests.count, 3)
+        XCTAssertEqual(writer.requests.count, 4)
         XCTAssertTrue(writer.requests.last?.messages.first?.text.contains("[00:00:03] board/IMG_1.jpg") == true)
         XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
     }
@@ -275,7 +317,7 @@ final class SessionProcessorTests: XCTestCase {
         let first = SessionProcessor(library: library, transcriber: FakeTranscriber(), writer: .init(provider: writer, model: "m"),
                                      notesLanguage: "tr", pieceLength: 6)
         _ = try await first.run(session, course: course) { _ in }
-        XCTAssertEqual(writer.requests.count, 2)
+        XCTAssertEqual(writer.requests.count, 3)
 
         // the same lecture goes on later that day
         let folder = library.folder(of: session)
@@ -290,7 +332,7 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertEqual(transcriber.called, ["c-0.m4a"])
         let transcript = try String(contentsOf: folder.appendingPathComponent("transcript.txt"), encoding: .utf8)
         XCTAssertTrue(transcript.hasSuffix("[00:00:22]\nwords of c-0 in tr\n"))
-        XCTAssertEqual(writer.requests.count, 4)
+        XCTAssertEqual(writer.requests.count, 6)
         XCTAssertTrue(SessionProcessor.isUpToDate(session, in: library))
     }
 

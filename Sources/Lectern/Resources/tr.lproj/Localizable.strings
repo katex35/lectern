@@ -187,3 +187,10 @@
 "count.questions.one" = "%ld soru";
 "count.photos" = "%ld fotoğraf";
 "count.photos.one" = "%ld fotoğraf";
+"process.dates" = "Tarihler aranıyor";
+"dates.said" = "Derste söylenen";
+"dates.add" = "Programa ekle";
+"dates.ignore" = "Yoksay";
+"dates.added" = "Programa eklendi";
+"dates.addedReminded" = "Programa eklendi, bir gün önce hatırlatılır";
+"dates.listen" = "Söylendiği yeri dinle";

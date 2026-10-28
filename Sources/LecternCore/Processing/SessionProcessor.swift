@@ -7,6 +7,7 @@ public enum ProcessingProgress: Equatable, Sendable {
     case transcribing(done: Int, total: Int)
     case writingNotes
     case writingQuestions
+    case findingDates
 }
 
 /// Speech to text for one piece of audio; `GeminiTranscriber` in the app, a stand-in in tests.
@@ -17,7 +18,7 @@ public protocol Transcribing: Sendable {
 extension GeminiTranscriber: Transcribing {}
 
 /// Turns a session's recordings into `transcript.txt`, then writes `notes.md` and `questions.md`
-/// with the user's chosen model. Each step is skipped when its file exists, and finished pieces are
+/// with the user's chosen model and lists the dates the lecturer gave in `dates.json`. Each step is skipped when its file exists, and finished pieces are
 /// kept, so an interrupted run continues where it stopped.
 public struct SessionProcessor: Sendable {
     public struct Writer: Sendable {
@@ -98,7 +99,8 @@ public struct SessionProcessor: Sendable {
         let needsNotes = !FileManager.default.fileExists(atPath: notesURL.path) || !state.notesCurrent
         let needsQuestions = !FileManager.default.fileExists(atPath: questionsURL.path)
             || state.manifest.questions != state.manifest.transcript
-        guard needsNotes || needsQuestions else { return outcome }
+        let needsDates = course != nil && state.manifest.dates != state.manifest.transcript
+        guard needsNotes || needsQuestions || needsDates else { return outcome }
         guard let writer = try await writer() else {
             outcome.needsWriter = true
             return outcome
@@ -122,7 +124,37 @@ public struct SessionProcessor: Sendable {
             state.manifest.questions = state.manifest.transcript
             try state.manifest.save(in: folder)
         }
+        if needsDates {
+            progress(.findingDates)
+            try await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder, state: &state)
+        }
         return outcome
+    }
+
+    /// Lectures whose transcript has not been read for dates yet; meetings have no course to add them to.
+    public static func needsDates(_ session: Session, in library: Library) -> Bool {
+        guard session.courseID != nil, session.kind != .meeting, !session.isRecording else { return false }
+        let state = state(of: session, in: library.folder(of: session))
+        return state.transcriptCurrent && state.manifest.dates != state.manifest.transcript
+    }
+
+    /// Reads an already transcribed lecture for dates, without touching its notes.
+    public func findDates(_ session: Session, course: Course?) async throws {
+        let session = library.reload(session) ?? session
+        let folder = library.folder(of: session)
+        var state = Self.state(of: session, in: folder)
+        guard state.transcriptCurrent, let transcript = try? String(contentsOf: folder.appendingPathComponent("transcript.txt"), encoding: .utf8),
+              let writer = try await writer() else { return }
+        try await findDates(session, course: course, transcript: transcript, writer: writer, folder: folder, state: &state)
+    }
+
+    private func findDates(_ session: Session, course: Course?, transcript: String, writer: Writer, folder: URL, state: inout State) async throws {
+        let answer = try await write(writer, system: LectureDates.prompt(language: notesLanguage),
+                                     input: NotePrompts.lecture(session: session, course: course, transcript: transcript), limit: 2000)
+        let found = LectureDates.parse(answer, lectureDate: session.date, transcript: transcript)
+        try library.save(LectureDates.merge(found, keeping: library.mentionedDates(of: session)), for: session)
+        state.manifest.dates = state.manifest.transcript
+        try state.manifest.save(in: folder)
     }
 
     // MARK: what is done
@@ -134,6 +166,8 @@ public struct SessionProcessor: Sendable {
         /// The board photos placed in the notes; missing for notes made before photos were tracked.
         var notesPhotos: [String]?
         var questions: [String]?
+        /// What `dates.json` was read from.
+        var dates: [String]?
 
         static func url(in folder: URL) -> URL { folder.appendingPathComponent(".lectern/made-from.json") }
 
