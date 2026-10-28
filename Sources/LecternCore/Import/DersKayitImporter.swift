@@ -153,7 +153,9 @@ public struct DersKayitImporter {
                 RecordingGap(start: g.bas, duration: g.uz, reason: g.neden == "yazici tikandi" ? .writerStalled
                              : g.neden == "tampon dustu" ? .droppedBuffer : .noInput)
             }
-            recordings.append(RecordingInfo(file: name, start: start, duration: end.map { $0.timeIntervalSince(start) },
+            // without an end in the old notes, the file itself knows how long it is
+            let duration = end.map { $0.timeIntervalSince(start) } ?? AudioLength.seconds(of: file)
+            recordings.append(RecordingInfo(file: name, start: start, duration: duration,
                                             device: meta?.cihaz, gaps: gaps, problem: meta?.hata))
         }
         guard let first = recordings.map(\.start).min() else {

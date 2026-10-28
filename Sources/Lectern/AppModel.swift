@@ -66,6 +66,8 @@ final class AppModel {
                 reload()
             }
         }
+        // lectures imported before lengths were read from the files
+        if library.completeDurations(sessions) > 0 { reload() }
         refreshAccounts()
         Reminders.shared.start(self)
     }

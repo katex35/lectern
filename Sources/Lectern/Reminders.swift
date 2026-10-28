@@ -43,16 +43,30 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         return granted
     }
 
-    /// Replaces the waiting notices with the lectures of the coming week.
+    private var planning: Task<Void, Never>?
+
+    /// Replaces the waiting notices with the lectures of the coming week. A new plan stops the one
+    /// still running and waits for it, so a removed lecture cannot come back from an older plan.
     func plan() async {
-        guard let center, let model else { return }
+        let previous = planning
+        previous?.cancel()
+        let task = Task { @MainActor in
+            await previous?.value
+            await self.replan()
+        }
+        planning = task
+        await task.value
+    }
+
+    private func replan() async {
+        guard let center, let model, !Task.isCancelled else { return }
         let waiting = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("lecture.") }
         center.removePendingNotificationRequests(withIdentifiers: waiting)
-        guard UserDefaults.standard.bool(forKey: Self.enabledKey) else { return }
+        guard UserDefaults.standard.bool(forKey: Self.enabledKey), !Task.isCancelled else { return }
         let lead = TimeInterval(Self.lead * 60)
         let lectures = model.schedule.upcoming(from: Date().addingTimeInterval(lead), days: 7, courses: model.courses,
                                                semester: model.library.settings().semester)
-        for lecture in lectures {
+        for lecture in lectures where !Task.isCancelled {
             let content = UNMutableNotificationContent()
             content.title = lecture.match.course.shortName
             content.body = lecture.match.slot.room.map { L("reminder.bodyRoom", Self.lead, $0) } ?? L("reminder.body", Self.lead)
@@ -67,7 +81,7 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         }
 
         // exams and deadlines: a day ahead, at the same time of day
-        for item in CourseDate.upcoming(in: model.courses, from: Date().addingTimeInterval(86_400), days: 7) {
+        for item in CourseDate.upcoming(in: model.courses, from: Date().addingTimeInterval(86_400), days: 7) where !Task.isCancelled {
             let content = UNMutableNotificationContent()
             content.title = item.course.shortName
             content.body = L("reminder.dateBody", item.date.title)

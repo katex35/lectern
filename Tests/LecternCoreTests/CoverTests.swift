@@ -17,6 +17,10 @@ final class CoverPromptTests: XCTestCase {
         XCTAssertEqual(CoverPrompts.subject("Two hands holding a glowing sphere"), fallback)
         XCTAssertEqual(CoverPrompts.subject("A national flag over hills"), fallback)
         XCTAssertEqual(CoverPrompts.subject(""), fallback)
+        // plurals without an s
+        XCTAssertEqual(CoverPrompts.subject("Two children stacking blocks"), fallback)
+        XCTAssertEqual(CoverPrompts.subject("Floating bodies of light"), fallback)
+        XCTAssertEqual(CoverPrompts.subject("Crossed knives on a table"), fallback)
         // short words count only whole: "manifold" and "surface" do not trip "man" and "face"
         XCTAssertNotEqual(CoverPrompts.subject("A smooth manifold surface with gentle curves"), fallback)
     }

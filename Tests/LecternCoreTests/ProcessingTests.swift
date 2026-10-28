@@ -331,6 +331,16 @@ final class SessionProcessorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: library.folder(of: session).appendingPathComponent("transcript.txt").path))
     }
 
+    func testMissingLengthsAreReadFromTheFiles() throws {
+        var session = try makeSession()
+        session.recordings[0].duration = nil
+        try library.save(session)
+        XCTAssertEqual(library.completeDurations([session]), 1)
+        XCTAssertEqual(library.reload(session)?.recordings[0].duration ?? 0, 14, accuracy: 0.1)
+        // nothing left to fill
+        XCTAssertEqual(library.completeDurations([library.reload(session)!]), 0)
+    }
+
     func testAnImportedSessionCountsAsDone() throws {
         let session = try makeSession()
         let folder = library.folder(of: session)

@@ -71,8 +71,31 @@ public enum LibrarySearch {
 
     /// Lower case without accents; the Turkish dotless and dotted i both become "i".
     public static func fold(_ text: String) -> String {
+        dotless(text).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// ı and İ as i, one letter for one, so positions stay those of the original text.
+    static func dotless(_ text: String) -> String {
         text.replacingOccurrences(of: "ı", with: "i").replacingOccurrences(of: "İ", with: "i")
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// Where the words of `query` stand in `text`, ignoring case and accents. Found in the text itself,
+    /// so letters that fold into two (ß) do not shift them.
+    public static func ranges(of query: String, in text: String) -> [Range<String.Index>] {
+        let prepared = dotless(text)
+        var found: [Range<String.Index>] = []
+        for word in dotless(query).split(separator: " ") where word.count >= 2 {
+            var from = prepared.startIndex
+            while let match = prepared.range(of: word, options: [.caseInsensitive, .diacriticInsensitive],
+                                             range: from..<prepared.endIndex) {
+                let start = prepared.distance(from: prepared.startIndex, to: match.lowerBound)
+                let length = prepared.distance(from: match.lowerBound, to: match.upperBound)
+                let lower = text.index(text.startIndex, offsetBy: start)
+                found.append(lower..<text.index(lower, offsetBy: length))
+                from = match.upperBound
+            }
+        }
+        return found
     }
 
     /// The line cut to about 140 characters around the first word, without Markdown marks.
@@ -81,8 +104,7 @@ public enum LibrarySearch {
             .replacingOccurrences(of: "\\)", with: "")
             .trimmingCharacters(in: CharacterSet(charactersIn: "#-*> ").union(.whitespaces))
         guard clean.count > 140 else { return clean }
-        let folded = fold(clean)
-        let at = folded.range(of: word).map { folded.distance(from: folded.startIndex, to: $0.lowerBound) } ?? 0
+        let at = ranges(of: word, in: clean).first.map { clean.distance(from: clean.startIndex, to: $0.lowerBound) } ?? 0
         let start = max(0, min(at - 50, clean.count - 140))
         var begin = clean.index(clean.startIndex, offsetBy: start)
         var end = clean.index(begin, offsetBy: min(140, clean.distance(from: begin, to: clean.endIndex)))

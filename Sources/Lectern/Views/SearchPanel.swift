@@ -5,6 +5,8 @@ import SwiftUI
 struct SearchPanel: View {
     @Environment(AppModel.self) private var model
     @State private var hits: [SearchHit] = []
+    /// The result Return opens; the arrow keys move it.
+    @State private var selected = 0
     @FocusState private var focused: Bool
 
     private var query: String { model.searchQuery }
@@ -24,7 +26,15 @@ struct SearchPanel: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 15))
                         .focused($focused)
-                        .onSubmit { if let first = hits.first { open(first) } }
+                        .onSubmit { if hits.indices.contains(selected) { open(hits[selected]) } }
+                        .onKeyPress(.downArrow) {
+                            selected = min(selected + 1, max(0, hits.count - 1))
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) {
+                            selected = max(selected - 1, 0)
+                            return .handled
+                        }
                     Text(verbatim: "esc")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.tertiary)
@@ -53,6 +63,7 @@ struct SearchPanel: View {
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard !Task.isCancelled else { return }
             hits = LibrarySearch.search(query, in: model.sessions, library: model.library)
+            selected = 0
         }
     }
 
@@ -67,8 +78,14 @@ struct SearchPanel: View {
         } else if hits.count <= 6 {
             list
         } else {
-            // a few results keep the panel short; many scroll inside it
-            ScrollView { list }.frame(height: 420)
+            // a few results keep the panel short; many scroll inside it, following the selection
+            ScrollViewReader { proxy in
+                ScrollView { list }
+                    .frame(height: 420)
+                    .onChange(of: selected) {
+                        if hits.indices.contains(selected) { proxy.scrollTo(hits[selected].id) }
+                    }
+            }
         }
     }
 
@@ -82,7 +99,7 @@ struct SearchPanel: View {
                     .padding(.horizontal, 10)
                     .padding(.top, 10)
                     .padding(.bottom, 2)
-                ForEach(group) { hit in row(hit) }
+                ForEach(group) { hit in row(hit).id(hit.id) }
             }
         }
         .padding(6)
@@ -125,27 +142,14 @@ struct SearchPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(RowButtonStyle())
+        .buttonStyle(RowButtonStyle(selected: hits.firstIndex(of: hit) == selected))
     }
 
     /// The snippet with every search word in bold.
     private func highlighted(_ snippet: String) -> AttributedString {
         var text = AttributedString(snippet)
-        let folded = LibrarySearch.fold(snippet)
-        for word in LibrarySearch.fold(query).split(separator: " ") where word.count >= 2 {
-            var from = folded.startIndex
-            while let found = folded.range(of: word, range: from..<folded.endIndex) {
-                let start = folded.distance(from: folded.startIndex, to: found.lowerBound)
-                let length = folded.distance(from: found.lowerBound, to: found.upperBound)
-                // folding keeps the letter count, so the same offsets mark the original text
-                let chars = text.characters
-                if start + length <= chars.count {
-                    let lower = chars.index(chars.startIndex, offsetBy: start)
-                    let upper = chars.index(lower, offsetBy: length)
-                    text[lower..<upper].font = .system(size: 13.5, weight: .semibold)
-                }
-                from = found.upperBound
-            }
+        for range in LibrarySearch.ranges(of: query, in: snippet) {
+            if let marked = Range(range, in: text) { text[marked].font = .system(size: 13.5, weight: .semibold) }
         }
         return text
     }

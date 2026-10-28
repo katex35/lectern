@@ -171,7 +171,7 @@ struct CourseSheet: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
-        .frame(width: 640, height: 640)
+        .frame(width: 640, height: 680)
     }
 
     private var colors: some View {

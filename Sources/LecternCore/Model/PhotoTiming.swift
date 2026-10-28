@@ -36,6 +36,12 @@ public enum PhotoTiming {
     /// before or after the recordings (or in a break) goes to the nearest end.
     public static func place(_ date: Date, in session: Session, now: Date = Date(),
                              margin: TimeInterval = 15 * 60) -> (recording: String, time: Double)? {
+        nearest(date, in: session, now: now, margin: margin).map { ($0.recording, $0.time) }
+    }
+
+    /// The spot in `session` closest to `date`, with how far outside its recordings that is.
+    static func nearest(_ date: Date, in session: Session, now: Date,
+                        margin: TimeInterval) -> (recording: String, time: Double, distance: TimeInterval)? {
         var best: (recording: String, time: Double, distance: TimeInterval)?
         for recording in session.orderedRecordings {
             let length = recording.duration ?? (recording.inProgress ? max(0, now.timeIntervalSince(recording.start)) : 0)
@@ -46,24 +52,29 @@ public enum PhotoTiming {
                 best = (recording.file, time, distance)
             }
         }
-        return best.map { ($0.recording, $0.time) }
+        return best
     }
 
-    /// The session that was being recorded when the photo was taken.
+    /// The session that was being recorded when the photo was taken: of two lectures back to back, the
+    /// one whose recording is closest.
     public static func session(for date: Date, among sessions: [Session], now: Date = Date(),
                                margin: TimeInterval = 15 * 60) -> Session? {
-        sessions.first { place(date, in: $0, now: now, margin: margin) != nil }
+        sessions.compactMap { session in nearest(date, in: session, now: now, margin: margin).map { (session, $0.distance) } }
+            .min { $0.1 < $1.1 }?.0
     }
 }
 
 extension Library {
     /// Copies photos into the session's `board` folder and places each on its timeline. A name already
-    /// taken gets a number, so two IMG_0001.jpg from different folders are both kept.
+    /// taken gets a number, so two IMG_0001.jpg from different folders are both kept. A photo that cannot
+    /// be copied is skipped; the error comes back only when none could be.
     @discardableResult
     public func addPhotos(_ urls: [URL], to session: Session, now: Date = Date()) throws -> Session {
         var session = reload(session) ?? session
         let board = folder(of: session).appendingPathComponent("board", isDirectory: true)
         try FileManager.default.createDirectory(at: board, withIntermediateDirectories: true)
+        var failure: Error?
+        var added = 0
         for url in urls {
             let name = url.deletingPathExtension().lastPathComponent
             let suffix = url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)"
@@ -73,11 +84,18 @@ extension Library {
                 target = board.appendingPathComponent("\(name)-\(number)\(suffix)")
                 number += 1
             }
-            try FileManager.default.copyItem(at: url, to: target)
+            do {
+                try FileManager.default.copyItem(at: url, to: target)
+            } catch {
+                failure = error
+                continue
+            }
             let taken = PhotoTiming.takenDate(of: url)
             let spot = taken.flatMap { PhotoTiming.place($0, in: session, now: now) }
             session.photos.append(BoardPhoto(file: target.lastPathComponent, taken: taken, recording: spot?.recording, time: spot?.time))
+            added += 1
         }
+        if added == 0, let failure { throw failure }
         try save(session)
         return session
     }

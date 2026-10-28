@@ -22,10 +22,13 @@ public enum CoverPrompts {
     """
 
     /// Words that send a suggested idea back to the plain abstract one.
-    static let refused = ["person", "people", "man", "woman", "men", "women", "child", "boy", "girl", "face", "hand",
-                          "body", "human", "student", "teacher", "professor", "crowd", "animal", "dog", "cat", "bird",
+    /// Plurals that do not end in "s" are listed on their own.
+    static let refused = ["person", "people", "man", "woman", "men", "women", "child", "children", "kid", "baby",
+                          "babies", "teen", "adult", "boy", "girl", "face", "hand", "body", "bodies", "human", "portrait",
+                          "selfie", "skin", "student", "teacher", "professor", "crowd", "animal", "dog", "cat", "bird",
                           "text", "letter", "word", "number", "logo", "brand", "flag", "cross", "crescent", "star of",
-                          "religio", "politic", "weapon", "gun", "knife", "blood", "skull", "death", "war", "nude", "sex"]
+                          "religio", "politic", "weapon", "gun", "knife", "knives", "blood", "skull", "death", "war",
+                          "nude", "naked", "sex"]
 
     /// The text model's request for a course or a lecture topic.
     public static func subjectRequest(model: String, topic: String, course: String?) -> CompletionRequest {

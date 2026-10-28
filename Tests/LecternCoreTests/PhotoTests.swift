@@ -44,6 +44,36 @@ final class PhotoTimingTests: XCTestCase {
         XCTAssertEqual(PhotoTiming.session(for: start.addingTimeInterval(60), among: [session])?.id, "s")
     }
 
+    func testOfTwoLecturesBackToBackTheNearestOneGetsThePhoto() throws {
+        // A ends at 10:50 (start + 3000 s), B starts at 11:00 (start + 3600 s)
+        let a = Session(id: "a", kind: .lecture, courseID: "X", title: "a", date: start,
+                        recordings: [RecordingInfo(file: "a.m4a", start: start, duration: 3000)])
+        let b = Session(id: "b", kind: .lecture, courseID: "Y", title: "b", date: start,
+                        recordings: [RecordingInfo(file: "b.m4a", start: start.addingTimeInterval(3600), duration: 3000)])
+        // two minutes into B, twelve after A ended: B, whatever the order
+        XCTAssertEqual(PhotoTiming.session(for: start.addingTimeInterval(3720), among: [a, b])?.id, "b")
+        XCTAssertEqual(PhotoTiming.session(for: start.addingTimeInterval(3720), among: [b, a])?.id, "b")
+        // two minutes after A ended
+        XCTAssertEqual(PhotoTiming.session(for: start.addingTimeInterval(3120), among: [b, a])?.id, "a")
+    }
+
+    func testAPhotoThatCannotBeCopiedIsSkipped() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("photos-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = Library(root: root)
+        let course = Course(id: "GORU", name: "Vision", language: "en")
+        try library.save(course)
+        let lecture = try library.lectureSession(course: course, date: Date(), week: 1)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("from"), withIntermediateDirectories: true)
+        let good = root.appendingPathComponent("from/good.jpg")
+        try Data([0xFF, 0xD8]).write(to: good)
+        let missing = root.appendingPathComponent("from/missing.jpg")
+        let updated = try library.addPhotos([missing, good], to: lecture)
+        XCTAssertEqual(updated.photos.map(\.file), ["good.jpg"])
+        XCTAssertEqual(library.reload(lecture)?.photos.count, 1)
+        XCTAssertThrowsError(try library.addPhotos([missing], to: lecture))
+    }
+
     func testARecordingStillGoingCountsUpToNow() throws {
         var live = session
         live.recordings[1].duration = nil
