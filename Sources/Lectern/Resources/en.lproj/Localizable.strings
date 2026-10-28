@@ -147,3 +147,4 @@
 "session.addPhotos" = "Add board photos";
 "photos.added" = "%ld photos added";
 "photos.unmatched" = "%ld photos match no lecture's time";
+"session.tab.chat" = "Chat";

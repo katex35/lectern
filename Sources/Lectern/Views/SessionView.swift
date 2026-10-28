@@ -12,29 +12,36 @@ struct SessionView: View {
     @State private var tab: Tab = .notes
     @State private var player = SessionPlayer()
     @State private var question = ""
-    @State private var askHint = false
     @FocusState private var askFocused: Bool
     @Namespace private var tabs
 
-    enum Tab: CaseIterable { case notes, transcript, questions }
+    enum Tab: CaseIterable { case notes, transcript, questions, chat }
 
     var body: some View {
         if let session = model.session(ref) {
+            let thread = model.chat.thread(of: session)
             VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        header(session)
-                        PlayerBar(player: player)
-                        tabBar
-                        content(session)
-                            .id(tab)
-                            .transition(.opacity.combined(with: .offset(y: 6)))
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            header(session)
+                            PlayerBar(player: player)
+                            tabBar(session)
+                            content(session)
+                                .id(tab)
+                                .transition(.opacity.combined(with: .offset(y: 6)))
+                            Color.clear.frame(height: 1).id("end")
+                        }
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: 760, alignment: .leading)
+                        .padding(.top, 12)
+                        .padding(.bottom, 20)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: 760, alignment: .leading)
-                    .padding(.top, 12)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity)
+                    // the newest answer stays in view while it comes in
+                    .onChange(of: (thread.streaming?.count ?? 0) + thread.entries.count * 100_000) {
+                        if tab == .chat { proxy.scrollTo("end", anchor: .bottom) }
+                    }
                 }
                 // text fades out above the field instead of being cut
                 .overlay(alignment: .bottom) {
@@ -42,26 +49,20 @@ struct SessionView: View {
                         .frame(height: 18)
                         .allowsHitTesting(false)
                 }
-                VStack(spacing: 6) {
-                    if askHint {
-                        HStack(spacing: 6) {
-                            Text(L("session.askNeedsAccount"))
-                            SettingsLink { Text(L("session.openSettings")).underline() }
-                                .buttonStyle(.plain)
-                        }
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.secondary)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                    Composer(draft: $question, focused: $askFocused, placeholder: L("session.ask"), showsTools: false) {
-                        withAnimation(Theme.ease) { askHint = true }
-                    }
+                Composer(draft: $question, focused: $askFocused, placeholder: L("session.ask"), showsTools: false) {
+                    model.chat.ask(question, in: session)
+                    question = ""
+                    tab = .chat
                 }
+                .disabled(model.chat.isAnswering(session))
                 .padding(.horizontal, 24)
                 .padding(.bottom, 14)
                 .frame(maxWidth: 760)
             }
-            .task(id: ref) { await player.load(session, folder: model.folder(of: session)) }
+            .task(id: ref) {
+                model.chat.load(session)
+                await player.load(session, folder: model.folder(of: session))
+            }
             // photos dropped here belong to this lecture whatever their time
             .dropDestination(for: URL.self) { urls, _ in
                 model.addPhotos(urls, to: session)
@@ -101,9 +102,12 @@ struct SessionView: View {
         model.addPhotos(panel.urls, to: session)
     }
 
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(Tab.allCases, id: \.self) { item in
+    /// The conversation tab appears once there is something in it.
+    private func tabBar(_ session: Session) -> some View {
+        let thread = model.chat.thread(of: session)
+        let shown = Tab.allCases.filter { $0 != .chat || !thread.entries.isEmpty || thread.streaming != nil }
+        return HStack(spacing: 0) {
+            ForEach(shown, id: \.self) { item in
                 Button {
                     withAnimation(Theme.ease) { tab = item }
                 } label: {
@@ -135,6 +139,7 @@ struct SessionView: View {
         case .notes: return L("session.tab.notes")
         case .transcript: return L("session.tab.transcript")
         case .questions: return L("session.tab.questions")
+        case .chat: return L("session.tab.chat")
         }
     }
 
@@ -170,6 +175,8 @@ struct SessionView: View {
             } else {
                 EmptyLine(text: L("session.questionsPending"))
             }
+        case .chat:
+            ChatView(session: session)
         }
     }
 }

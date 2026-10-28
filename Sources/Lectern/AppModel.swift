@@ -27,6 +27,7 @@ final class AppModel {
     let schedule = Schedule()
     let recorder = RecordingController()
     let processing = ProcessingCenter()
+    let chat = ChatCenter()
     private(set) var courses: [Course] = []
     /// Every lecture and meeting, newest first.
     private(set) var sessions: [Session] = []
@@ -41,6 +42,7 @@ final class AppModel {
         self.library = library
         recorder.model = self
         processing.model = self
+        chat.model = self
         reload()
         // an empty library can start from the folders of the original ders-kayit tool (copied, never moved)
         if courses.isEmpty, let source = ProcessInfo.processInfo.environment["LECTERN_IMPORT"], !source.isEmpty {

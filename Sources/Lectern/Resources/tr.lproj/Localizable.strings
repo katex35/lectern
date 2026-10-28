@@ -147,3 +147,4 @@
 "session.addPhotos" = "Tahta fotoğrafı ekle";
 "photos.added" = "%ld fotoğraf eklendi";
 "photos.unmatched" = "%ld fotoğraf hiçbir dersin saatine denk gelmedi";
+"session.tab.chat" = "Sohbet";

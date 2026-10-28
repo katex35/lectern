@@ -86,8 +86,20 @@ enum Snapshots {
                     for _ in 0..<40 where model.processing.isRunning(fresh) { await pause(0.5) }
                     await pause(1.2)
                     save(window, to: folder.appendingPathComponent("4c-photo.png"))
-                    await pause(4)
-                    save(window, to: folder.appendingPathComponent("4d-photo-later.png"))
+                }
+
+                // a question about the lecture, answered from its notes
+                if let fresh = model.session(SessionRef(session)) {
+                    model.chat.load(fresh)
+                    model.chat.ask("Zincir kuralını bir örnekle açıklar mısın?", in: fresh)
+                    for _ in 0..<20 where model.chat.isAnswering(fresh) { await pause(0.5) }
+                    let renderer = ImageRenderer(content: ChatView(session: fresh).environment(model)
+                        .frame(width: 712).padding(24).background(.white).environment(\.colorScheme, .light))
+                    renderer.scale = 2
+                    if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+                       let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                        try? png.write(to: folder.appendingPathComponent("4e-chat.png"))
+                    }
                 }
             }
         }
@@ -118,7 +130,9 @@ enum Snapshots {
             let photos = (request.messages.first?.text ?? "").split(separator: "\n")
                 .compactMap { line in line.range(of: "board/").map { "![](\(line[$0.lowerBound...]))\n\n" } }
                 .joined()
-            let text = request.system.contains("practice questions")
+            let text = request.system.contains("answer a student's questions")
+                ? "Zincir kuralı, iç içe işlemlerde türevi adım adım çarpar. Örneğin \\(U = B\\cdot C\\) ve \\(T = A + U\\) ise \\(\\frac{\\partial T}{\\partial B} = \\frac{\\partial T}{\\partial U}\\cdot\\frac{\\partial U}{\\partial B} = C\\) olur.\n"
+                : request.system.contains("practice questions")
                 ? "# Zincir kuralı\n\n1. Zincir kuralı neyi hesaplar?\n> İç değişkenlere göre türevleri çarparak sonucun türevini.\n"
                 : "# Zincir kuralı ve geri yayılım\n\n## Zincir kuralı\n\n- **Zincir kuralı:** \\(\\frac{\\partial C}{\\partial w} = \\frac{\\partial C}{\\partial a}\\cdot\\frac{\\partial a}{\\partial w}\\)\n\n\(photos)## Sınavda çıkabilecekler\n\n- Hoca zincir kuralının sınavda çıkacağını söyledi.\n"
             return AsyncThrowingStream { continuation in
