@@ -161,3 +161,6 @@
 "course.kind.other" = "Diğer";
 "home.upcoming" = "Yaklaşanlar";
 "reminder.dateBody" = "Yarın: %@";
+"menu.search" = "Derslerde ara";
+"search.prompt" = "Derslerde ara";
+"search.none" = "Hiçbir derste geçmiyor";

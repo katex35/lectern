@@ -161,3 +161,6 @@
 "course.kind.other" = "Other";
 "home.upcoming" = "Coming up";
 "reminder.dateBody" = "Tomorrow: %@";
+"menu.search" = "Search lectures";
+"search.prompt" = "Search your lectures";
+"search.none" = "Not in any lecture";

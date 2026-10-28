@@ -35,6 +35,20 @@ final class AppModel {
     var sidebarVisible = true
     /// The course in the add or edit sheet.
     var editingCourse: CourseDraft?
+    /// The search panel is open.
+    var searching = false
+    /// What was last searched for; kept when the panel closes.
+    var searchQuery = ""
+
+    /// Where a search result leads: the tab of the lecture and, in a transcript, the moment to play.
+    struct Jump: Equatable {
+        var session: SessionRef
+        var source: SearchHit.Source
+        var time: TimeInterval?
+    }
+
+    /// Taken by the lecture page once it is open.
+    var jump: Jump?
     /// The service that writes notes, read from the keychain at launch and after Settings change it.
     private(set) var noteModelName = ""
 

@@ -26,6 +26,8 @@ struct LecternApp: App {
             CommandGroup(after: .sidebar) {
                 Button(L("menu.toggleSidebar")) { withAnimation(Theme.ease) { model.sidebarVisible.toggle() } }
                     .keyboardShortcut("s", modifiers: [.command, .control])
+                Button(L("menu.search")) { withAnimation(Theme.quick) { model.searching.toggle() } }
+                    .keyboardShortcut("k", modifiers: [.command])
             }
         }
 
@@ -94,6 +96,11 @@ struct RootView: View {
         .sheet(item: $model.editingCourse) { draft in
             CourseSheet(draft: draft)
                 .environment(model)
+        }
+        .overlay {
+            if model.searching {
+                SearchPanel().transition(.opacity)
+            }
         }
     }
 }

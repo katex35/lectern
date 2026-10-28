@@ -30,6 +30,14 @@ enum Snapshots {
             await pause(0.8)
         }
 
+        model.searchQuery = "zincir kuralı"
+        model.searching = true
+        await pause(1.2)
+        save(window, to: folder.appendingPathComponent("1c-search.png"))
+        model.searching = false
+        model.searchQuery = ""
+        await pause(0.5)
+
         if let session = model.sessions.first(where: { model.text("notes.md", in: $0) != nil }) ?? model.sessions.first {
             model.open(session)
             await pause(4)

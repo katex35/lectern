@@ -14,6 +14,9 @@ struct SidebarView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .kerning(-0.3)
                 Spacer(minLength: 0)
+                IconButton(systemName: "magnifyingglass", label: L("menu.search")) {
+                    withAnimation(Theme.quick) { model.searching = true }
+                }
                 IconButton(systemName: "square.and.pencil", label: L("sidebar.new")) { model.goHome() }
             }
             .frame(height: 52)

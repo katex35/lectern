@@ -61,7 +61,18 @@ struct SessionView: View {
             }
             .task(id: ref) {
                 model.chat.load(session)
+                // arriving from a search result: its tab, and in a transcript its moment
+                let jump = model.jump?.session == ref ? model.jump : nil
+                if let jump {
+                    model.jump = nil
+                    switch jump.source {
+                    case .notes: tab = .notes
+                    case .transcript: tab = .transcript
+                    case .chat: tab = .chat
+                    }
+                }
                 await player.load(session, folder: model.folder(of: session))
+                if let time = jump?.time { player.play(at: time) }
             }
             // photos dropped here belong to this lecture whatever their time
             .dropDestination(for: URL.self) { urls, _ in
