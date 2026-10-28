@@ -36,19 +36,23 @@ extension Color {
     }
 }
 
+/// Where the translations are: Lectern.app's own Resources, or SwiftPM's resource bundle when started
+/// with `swift run`. The app never reads SwiftPM's bundle, which would have to sit where it breaks the signature.
+private let tables: Bundle = Bundle.main.path(forResource: "Localizable", ofType: "strings") != nil ? .main : .module
+
 /// The app's table in the user's language. Picked by hand because a binary started outside an app
 /// bundle would otherwise always get the development language.
 private let localizedBundle: Bundle = {
-    let preferred = Bundle.preferredLocalizations(from: Bundle.module.localizations, forPreferences: Locale.preferredLanguages)
-    if let code = preferred.first, let path = Bundle.module.path(forResource: code, ofType: "lproj"),
+    let preferred = Bundle.preferredLocalizations(from: tables.localizations, forPreferences: Locale.preferredLanguages)
+    if let code = preferred.first, let path = tables.path(forResource: code, ofType: "lproj"),
        let bundle = Bundle(path: path) {
         return bundle
     }
-    return .module
+    return tables
 }()
 
 /// The language the app speaks, "tr" or "en"; notes are written in it too.
-let appLanguage: String = Bundle.preferredLocalizations(from: Bundle.module.localizations,
+let appLanguage: String = Bundle.preferredLocalizations(from: tables.localizations,
                                                        forPreferences: Locale.preferredLanguages).first ?? "en"
 
 /// A localized string from the app's own tables.

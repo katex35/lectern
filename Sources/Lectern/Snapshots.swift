@@ -7,6 +7,11 @@ import SwiftUI
 @MainActor
 enum Snapshots {
     static func runIfRequested(_ model: AppModel) async {
+        if let path = ProcessInfo.processInfo.environment["LECTERN_ICON"], !path.isEmpty {
+            saveIcon(to: URL(fileURLWithPath: path))
+            NSApp.terminate(nil)
+            return
+        }
         guard let path = ProcessInfo.processInfo.environment["LECTERN_SNAPSHOT"], !path.isEmpty else { return }
         let folder = URL(fileURLWithPath: path, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -98,6 +103,25 @@ enum Snapshots {
                 }
             }
         }
+    }
+
+    /// The app icon at 1024 points for `scripts/bundle.sh`: the logo on a white tile, inside the margin
+    /// macOS icons keep around their shape.
+    private static func saveIcon(to url: URL) {
+        let icon = ZStack {
+            RoundedRectangle(cornerRadius: 185, style: .continuous)
+                .fill(.white)
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 8)
+                .frame(width: 824, height: 824)
+            LogoMark(size: 520)
+        }
+        .frame(width: 1024, height: 1024)
+        .environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: icon)
+        renderer.scale = 1
+        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: url)
     }
 
     private static func pause(_ seconds: Double) async {
