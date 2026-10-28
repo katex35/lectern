@@ -164,3 +164,7 @@
 "menu.search" = "Derslerde ara";
 "search.prompt" = "Derslerde ara";
 "search.none" = "Hiçbir derste geçmiyor";
+"settings.notes" = "Notlar";
+"settings.notes.language" = "Not dili";
+"settings.notes.appLanguage" = "Uygulamanın dili";
+"settings.notes.model" = "Notları yazan model";

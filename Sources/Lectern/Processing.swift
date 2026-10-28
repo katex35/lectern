@@ -42,6 +42,23 @@ enum Providers {
         return nil
     }
 
+    static let notesLanguageKey = "notes.language"
+
+    /// The language notes are written in: the one chosen in Settings, else the app's.
+    static var notesLanguage: String {
+        UserDefaults.standard.string(forKey: notesLanguageKey).flatMap { $0.isEmpty ? nil : $0 } ?? appLanguage
+    }
+
+    static func modelKey(_ kind: ProviderKind) -> String { "notes.model.\(kind.rawValue)" }
+
+    /// The service that writes notes, the models it offers and the one in use, for Settings.
+    static func writerChoices() async -> (kind: ProviderKind, models: [String], current: String)? {
+        guard let writer = (try? await writer()) ?? nil,
+              let models = try? await writer.provider.models().map(\.id).filter({ !$0.contains("transcribe") }) else { return nil }
+        let listed = models.contains(writer.model) ? models : [writer.model] + models
+        return (writer.provider.kind, listed, writer.model)
+    }
+
     /// Forgets the shared ChatGPT session after a sign-in or sign-out in Settings.
     static func accountsChanged() {
         chatGPT = nil
@@ -58,7 +75,7 @@ enum Providers {
     }
 
     private static func saved(_ kind: ProviderKind) -> String? {
-        UserDefaults.standard.string(forKey: "notes.model.\(kind.rawValue)")
+        UserDefaults.standard.string(forKey: modelKey(kind))
     }
 
     /// The model chosen in Settings, else a sensible one from what the account lists.
@@ -133,7 +150,7 @@ final class ProcessingCenter {
             }
             do {
                 let processor = SessionProcessor(library: library, transcriber: Providers.transcriber(),
-                                                 findWriter: { try await Providers.writer() }, notesLanguage: appLanguage)
+                                                 findWriter: { try await Providers.writer() }, notesLanguage: Providers.notesLanguage)
                 let outcome = try await processor.run(session, course: course) { progress in
                     Task { @MainActor in
                         guard let self, case .running = self.states[ref] else { return }

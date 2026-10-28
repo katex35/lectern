@@ -4,14 +4,18 @@ import SwiftUI
 
 struct SettingsView: View {
     static let keychainService = "app.lectern"
+    static let tabKey = "settings.tab"
     @Environment(AppModel.self) private var model
+    @AppStorage(tabKey) private var tab = "accounts"
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             AccountsPane()
                 .tabItem { Label(L("settings.accounts"), systemImage: "person.crop.circle") }
+                .tag("accounts")
             GeneralPane()
                 .tabItem { Label(L("settings.general"), systemImage: "gearshape") }
+                .tag("general")
         }
         .frame(width: 620, height: 520)
     }
@@ -36,10 +40,52 @@ private struct GeneralPane: View {
                 Text(Locale.current.localizedString(forLanguageCode: Locale.current.language.languageCode?.identifier ?? "en") ?? "")
                     .foregroundStyle(Theme.secondary)
             }
+            NotesSection()
             SemesterSection()
             ReminderSection()
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The language notes are written in, and the model that writes them.
+private struct NotesSection: View {
+    @AppStorage(Providers.notesLanguageKey) private var language = ""
+    @State private var choices: (kind: ProviderKind, models: [String], current: String)?
+    @State private var model = ""
+    @State private var loading = true
+
+    var body: some View {
+        Section(L("settings.notes")) {
+            Picker(L("settings.notes.language"), selection: $language) {
+                Text(L("settings.notes.appLanguage")).tag("")
+                ForEach(["tr", "en", "de", "fr", "es", "it", "ar", "ru"], id: \.self) { code in
+                    Text(Locale(identifier: code).localizedString(forLanguageCode: code)?.localizedCapitalized ?? code).tag(code)
+                }
+            }
+            LabeledContent(L("settings.notes.model")) {
+                if loading {
+                    ProgressView().controlSize(.small)
+                } else if let choices {
+                    Picker(L("settings.notes.model"), selection: $model) {
+                        ForEach(choices.models, id: \.self) { Text(verbatim: $0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    // only a choice the user makes is kept; the first value is the one already in use
+                    .onChange(of: model) { old, new in
+                        if !old.isEmpty { UserDefaults.standard.set(new, forKey: Providers.modelKey(choices.kind)) }
+                    }
+                } else {
+                    Text(L("top.noModel")).foregroundStyle(Theme.tertiary)
+                }
+            }
+        }
+        .task {
+            choices = await Providers.writerChoices()
+            model = choices?.current ?? ""
+            loading = false
+        }
     }
 }
 
@@ -245,8 +291,9 @@ private struct KeyRow: View {
                     .foregroundStyle(saved && message == nil ? Color(hex: 0x047857) : Theme.tertiary)
             }
             HStack(spacing: 8) {
-                SecureField(hint, text: $key)
+                SecureField(hint, text: $key, prompt: Text(hint))
                     .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
                 Button(saved && key.isEmpty ? L("settings.remove") : L("settings.save")) { Task { await save() } }
                     .disabled(checking || (!saved && key.isEmpty))
                 Link(L("settings.getKey"), destination: link)
@@ -300,10 +347,12 @@ private struct EndpointRow: View {
                 if let message { Text(message).font(.system(size: 12)).foregroundStyle(Theme.tertiary) }
             }
             HStack(spacing: 8) {
-                TextField("http://127.0.0.1:8317/v1", text: $address)
+                TextField(L("settings.endpoint"), text: $address, prompt: Text(verbatim: "http://127.0.0.1:8317/v1"))
                     .textFieldStyle(.roundedBorder)
-                SecureField(L("settings.endpoint.key"), text: $key)
+                    .labelsHidden()
+                SecureField(L("settings.endpoint.key"), text: $key, prompt: Text(L("settings.endpoint.key")))
                     .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
                     .frame(width: 150)
                 Button(L("settings.check")) { Task { await check() } }
                     .disabled(URL(string: address)?.host == nil)

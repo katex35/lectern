@@ -117,7 +117,7 @@ public struct DersKayitImporter {
         if let text = program?.donem_baslangic, library.settings().semester == nil,
            let start = Self.dayFormatter.date(from: text) {
             var settings = library.settings()
-            settings.semester = Semester(name: "Imported term", start: start)
+            settings.semester = Semester(name: "", start: start)
             try library.save(settings)
         }
 

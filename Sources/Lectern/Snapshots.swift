@@ -6,7 +6,7 @@ import SwiftUI
 /// Recording uses the simulated microphone when `LECTERN_SIMULATE` is set as well.
 @MainActor
 enum Snapshots {
-    static func runIfRequested(_ model: AppModel) async {
+    static func runIfRequested(_ model: AppModel, openSettings: OpenSettingsAction) async {
         if let path = ProcessInfo.processInfo.environment["LECTERN_ICON"], !path.isEmpty {
             saveIcon(to: URL(fileURLWithPath: path))
             NSApp.terminate(nil)
@@ -37,6 +37,22 @@ enum Snapshots {
         model.searching = false
         model.searchQuery = ""
         await pause(0.5)
+
+        // Settings opens in its own window, on the tab used last
+        let lastTab = UserDefaults.standard.string(forKey: SettingsView.tabKey)
+        UserDefaults.standard.set("accounts", forKey: SettingsView.tabKey)
+        openSettings()
+        await pause(1.5)
+        if let settings = NSApp.windows.first(where: { $0 !== window && $0.isVisible && $0.canBecomeKey && $0.attachedSheet == nil
+            && $0.frame.width > 400 }) {
+            save(settings, to: folder.appendingPathComponent("1d-accounts.png"))
+            UserDefaults.standard.set("general", forKey: SettingsView.tabKey)
+            await pause(1.2)
+            save(settings, to: folder.appendingPathComponent("1e-general.png"))
+            settings.close()
+            await pause(0.5)
+        }
+        UserDefaults.standard.set(lastTab, forKey: SettingsView.tabKey)
 
         if let session = model.sessions.first(where: { model.text("notes.md", in: $0) != nil }) ?? model.sessions.first {
             model.open(session)

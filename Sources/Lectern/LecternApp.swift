@@ -13,7 +13,6 @@ struct LecternApp: App {
                 .environment(model)
                 .frame(minWidth: 960, minHeight: 640)
                 .preferredColorScheme(.light)
-                .task { await Snapshots.runIfRequested(model) }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 800)
@@ -62,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var model = model
@@ -102,6 +102,7 @@ struct RootView: View {
                 SearchPanel().transition(.opacity)
             }
         }
+        .task { await Snapshots.runIfRequested(model, openSettings: openSettings) }
     }
 }
 

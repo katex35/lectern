@@ -164,3 +164,7 @@
 "menu.search" = "Search lectures";
 "search.prompt" = "Search your lectures";
 "search.none" = "Not in any lecture";
+"settings.notes" = "Notes";
+"settings.notes.language" = "Notes language";
+"settings.notes.appLanguage" = "The app's language";
+"settings.notes.model" = "Model that writes notes";
