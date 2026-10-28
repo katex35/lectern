@@ -17,7 +17,7 @@ struct SettingsView: View {
                 .tabItem { Label(L("settings.general"), systemImage: "gearshape") }
                 .tag("general")
         }
-        .frame(width: 620, height: 520)
+        .frame(width: 620, height: 600)
     }
 }
 
@@ -183,6 +183,11 @@ private struct AccountsPane: View {
                 Text(L("settings.chatgpt.footer")).foregroundStyle(Theme.tertiary)
             }
             Section {
+                GoogleRow(credentials: credentials)
+            } footer: {
+                Text(L("settings.google.footer")).foregroundStyle(Theme.tertiary)
+            }
+            Section {
                 KeyRow(kind: .gemini, title: "Gemini", hint: L("settings.gemini.hint"),
                        link: URL(string: "https://aistudio.google.com/apikey")!, credentials: credentials)
                 KeyRow(kind: .anthropic, title: "Claude", hint: L("settings.claude.hint"),
@@ -200,41 +205,53 @@ private struct AccountsPane: View {
     }
 }
 
+/// The ChatGPT account. Signing in links it the way the Codex CLI does; an account linked earlier
+/// with "Sign in with ChatGPT" keeps working for notes until it is signed out.
 private struct ChatGPTRow: View {
     @Environment(AppModel.self) private var model
     let credentials: Credentials
-    @State private var account: ChatGPTAccount?
+    @State private var codex: CodexAccount?
+    @State private var legacy: ChatGPTAccount?
     @State private var working = false
     @State private var message: String?
+
+    private var signedIn: Bool { codex != nil || legacy?.tokens != nil }
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: "ChatGPT").font(.system(size: 14, weight: .semibold))
-                Text(status).font(.system(size: 12)).foregroundStyle(account?.tokens != nil ? Color(hex: 0x047857) : Theme.tertiary)
+                Text(status).font(.system(size: 12)).foregroundStyle(signedIn && message == nil ? Color(hex: 0x047857) : Theme.tertiary)
             }
             Spacer()
             if working { ProgressView().controlSize(.small) }
-            if account?.tokens != nil {
-                Button(L("settings.signOut")) { Task { await signOut() } }
+            if signedIn {
+                if codex == nil {
+                    // linked the old way: covers need the Codex sign-in
+                    Button(L("settings.chatgpt.signIn")) { Task { await signIn() } }.disabled(working)
+                }
+                Button(L("settings.signOut")) { Task { await signOut() } }.disabled(working)
             } else {
                 Button(L("settings.chatgpt.signIn")) { Task { await signIn() } }
                     .buttonStyle(.borderedProminent)
                     .disabled(working)
             }
         }
-        .task { account = try? credentials.chatGPTAccount() }
+        .task {
+            codex = try? credentials.codexAccount()
+            legacy = try? credentials.chatGPTAccount()
+        }
     }
 
     private var status: String {
         if let message { return message }
-        guard let account, account.tokens != nil else { return L("settings.notConnected") }
-        if !account.canUsePlan { return L("settings.chatgpt.noPlan") }
-        return L("settings.connected", account.email ?? "ChatGPT")
-    }
-
-    private func auth() throws -> ChatGPTAuth {
-        ChatGPTAuth(appName: "Lectern", hostID: try credentials.hostID())
+        if let codex {
+            let plan = codex.planType == CodexAuth.defaultPlanType ? "" : " · \(codex.planType)"
+            return L("settings.connected", (codex.email ?? "ChatGPT") + plan)
+        }
+        guard let legacy, legacy.tokens != nil else { return L("settings.notConnected") }
+        if !legacy.canUsePlan { return L("settings.chatgpt.noPlan") }
+        return L("settings.chatgpt.legacy", legacy.email ?? "ChatGPT")
     }
 
     private func signIn() async {
@@ -242,11 +259,11 @@ private struct ChatGPTRow: View {
         message = L("settings.chatgpt.waiting")
         defer { working = false }
         do {
-            let signedIn = try await auth().signIn(previous: account, page: L("settings.chatgpt.browserPage")) { url in
+            let account = try await CodexAuth().signIn(page: L("settings.chatgpt.browserPage")) { url in
                 Task { @MainActor in NSWorkspace.shared.open(url) }
             }
-            try credentials.setChatGPTAccount(signedIn)
-            account = signedIn
+            try credentials.setCodexAccount(account)
+            codex = account
             message = nil
             model.refreshAccounts()
         } catch {
@@ -255,16 +272,79 @@ private struct ChatGPTRow: View {
     }
 
     private func signOut() async {
-        guard let account else { return }
         working = true
         defer { working = false }
-        let store = credentials
-        let session = ChatGPTSession(account: account, auth: (try? auth()) ?? ChatGPTAuth(appName: "Lectern", hostID: account.hostID)) { updated in
-            try? store.setChatGPTAccount(updated)
+        try? credentials.setCodexAccount(nil)
+        codex = nil
+        if let legacy, legacy.tokens != nil {
+            let store = credentials
+            let session = ChatGPTSession(account: legacy, auth: ChatGPTAuth(appName: "Lectern", hostID: legacy.hostID)) { updated in
+                try? store.setChatGPTAccount(updated)
+            }
+            let confirmed = await session.signOut()
+            self.legacy = await session.account
+            message = confirmed ? nil : L("settings.signOutUnconfirmed")
+        } else {
+            message = nil
         }
-        let confirmed = await session.signOut()
-        self.account = await session.account
-        message = confirmed ? nil : L("settings.signOutUnconfirmed")
+        model.refreshAccounts()
+    }
+}
+
+/// The Google account that transcribes, linked the way the Antigravity editor links one.
+private struct GoogleRow: View {
+    @Environment(AppModel.self) private var model
+    let credentials: Credentials
+    @State private var account: AntigravityAccount?
+    @State private var working = false
+    @State private var message: String?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: "Google").font(.system(size: 14, weight: .semibold))
+                Text(status).font(.system(size: 12)).foregroundStyle(account != nil && message == nil ? Color(hex: 0x047857) : Theme.tertiary)
+            }
+            Spacer()
+            if working { ProgressView().controlSize(.small) }
+            if account != nil {
+                Button(L("settings.signOut")) { signOut() }.disabled(working)
+            } else {
+                Button(L("settings.google.signIn")) { Task { await signIn() } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(working)
+            }
+        }
+        .task { account = try? credentials.antigravityAccount() }
+    }
+
+    private var status: String {
+        if let message { return message }
+        guard let account else { return L("settings.notConnected") }
+        return L("settings.connected", account.email)
+    }
+
+    private func signIn() async {
+        working = true
+        message = L("settings.chatgpt.waiting")
+        defer { working = false }
+        do {
+            let signedIn = try await AntigravityAuth().signIn(page: L("settings.chatgpt.browserPage")) { url in
+                Task { @MainActor in NSWorkspace.shared.open(url) }
+            }
+            try credentials.setAntigravityAccount(signedIn)
+            account = signedIn
+            message = nil
+            model.refreshAccounts()
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    private func signOut() {
+        try? credentials.setAntigravityAccount(nil)
+        account = nil
+        message = nil
         model.refreshAccounts()
     }
 }

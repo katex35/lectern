@@ -44,8 +44,9 @@
 
 | | Works with |
 |---|---|
-| Transcription | Gemini (a Google AI Studio key) |
-| Notes, questions, answers | Sign in with ChatGPT, a Claude, OpenAI or Gemini key, or a local OpenAI-style server |
+| Transcription | Sign in with Google (the Antigravity sign-in), or a Google AI Studio key |
+| Notes, questions, answers | Sign in with ChatGPT (the Codex sign-in), a Claude, OpenAI or Gemini key, or a local OpenAI-style server |
+| Covers | The ChatGPT sign-in, or an OpenAI or Gemini key |
 
 No Lectern server and no sign-up. Keys stay in the macOS Keychain, lectures stay in `~/Documents/Lectern` as plain files.
 
@@ -83,7 +84,9 @@ Meetings/<date> <time>/               the same for a meeting
 
 When Lectern writes a file again, the old one goes to `.lectern/previous` in the lecture's folder.
 
-**Covers** are drawn from each course's and lecture's topic with an OpenAI or Gemini key. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
+**Sign-ins** work the way the Codex CLI and the Antigravity editor sign in: the browser opens OpenAI's or Google's page, and the answer comes back to `localhost:1455` or `localhost:51121`. ChatGPT requests go to ChatGPT's Codex backend on your plan; Gemini requests go to Cloud Code on your Google account's quota.
+
+**Covers** are drawn from each course's and lecture's topic with the ChatGPT sign-in or an OpenAI or Gemini key. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
 
 **For development**
 

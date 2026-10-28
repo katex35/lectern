@@ -63,9 +63,12 @@ enum Covers {
 
     // MARK: drawing
 
-    /// What draws covers: an OpenAI or a Gemini key. The ChatGPT sign-in cannot make images.
+    /// What draws covers: the ChatGPT account (Codex sign-in), else an OpenAI or a Gemini key.
     static func maker() -> (any ImageMaker)? {
         if ProcessInfo.processInfo.environment["LECTERN_FAKE_AI"] != nil { return Snapshots.FakeImageMaker() }
+        if let account = (try? Providers.credentials.codexAccount()) ?? nil {
+            return CodexImageMaker(session: Providers.codexSession(account))
+        }
         if let key = (try? Providers.credentials.apiKey(for: .openAI)) ?? nil { return OpenAIImageMaker(apiKey: key) }
         if let key = (try? Providers.credentials.apiKey(for: .gemini)) ?? nil { return GeminiImageMaker(apiKey: key) }
         return nil

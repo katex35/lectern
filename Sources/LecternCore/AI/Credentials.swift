@@ -109,6 +109,26 @@ public struct Credentials: Sendable {
         try store.set(account.map { try JSONStore.encoder.encode($0) }, for: "chatGPT.account")
     }
 
+    /// The ChatGPT account linked through the Codex sign-in.
+    public func codexAccount() throws -> CodexAccount? {
+        guard let data = try store.data(for: "codex.account") else { return nil }
+        return try JSONStore.decoder.decode(CodexAccount.self, from: data)
+    }
+
+    public func setCodexAccount(_ account: CodexAccount?) throws {
+        try store.set(account.map { try JSONStore.encoder.encode($0) }, for: "codex.account")
+    }
+
+    /// The Google account linked through the Antigravity sign-in.
+    public func antigravityAccount() throws -> AntigravityAccount? {
+        guard let data = try store.data(for: "antigravity.account") else { return nil }
+        return try JSONStore.decoder.decode(AntigravityAccount.self, from: data)
+    }
+
+    public func setAntigravityAccount(_ account: AntigravityAccount?) throws {
+        try store.set(account.map { try JSONStore.encoder.encode($0) }, for: "antigravity.account")
+    }
+
     /// The id this Mac signs in to ChatGPT with, created on first use and kept.
     public func hostID() throws -> String {
         if let data = try store.data(for: "chatGPT.host") { return String(decoding: data, as: UTF8.self) }

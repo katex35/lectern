@@ -55,6 +55,8 @@ public enum ChatGPTAuthError: Error, Equatable, LocalizedError {
     /// A different ChatGPT account signed in than the one being renewed.
     case differentAccount
     case invalidIDToken(String)
+    /// The sign-in's registered callback port is taken by another program.
+    case portInUse(Int)
     case failed(String)
 
     public var errorDescription: String? {
@@ -64,6 +66,7 @@ public enum ChatGPTAuthError: Error, Equatable, LocalizedError {
         case .stateMismatch: return "The sign-in answer did not match this request"
         case .differentAccount: return "A different ChatGPT account signed in"
         case .invalidIDToken(let reason): return "The sign-in could not be verified: \(reason)"
+        case .portInUse(let port): return "Port \(port) is in use by another program; close it and sign in again"
         case .failed(let reason): return reason
         }
     }

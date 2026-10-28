@@ -22,12 +22,21 @@ final class LoopbackServer: @unchecked Sendable {
         self.page = page
     }
 
-    /// Starts listening on a free port of 127.0.0.1.
-    static func start(path: String, state: String, page: String) async throws -> LoopbackServer {
+    /// Starts listening on a free port of 127.0.0.1, or on `port` of localhost (both address
+    /// families) when the sign-in's redirect address is registered with a fixed port.
+    static func start(path: String, state: String, page: String, port fixed: UInt16? = nil) async throws -> LoopbackServer {
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
         parameters.requiredInterfaceType = .loopback
-        let listener = try NWListener(using: parameters)
+        // a sign-in tried again right after one ended must get the same port back
+        parameters.allowLocalEndpointReuse = true
+        let listener: NWListener
+        if let fixed {
+            guard let port = NWEndpoint.Port(rawValue: fixed) else { throw ChatGPTAuthError.portInUse(Int(fixed)) }
+            listener = try NWListener(using: parameters, on: port)
+        } else {
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+            listener = try NWListener(using: parameters)
+        }
         let server = LoopbackServer(listener: listener, path: path, state: state, page: page)
         listener.newConnectionHandler = { [weak server] connection in server?.accept(connection) }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -43,7 +52,11 @@ final class LoopbackServer: @unchecked Sendable {
                     // waiting would never end on its own for a loopback port
                     started.isSet = true
                     listener?.cancel()
-                    continuation.resume(throwing: error)
+                    if let fixed, case .posix(let code) = error, code == .EADDRINUSE {
+                        continuation.resume(throwing: ChatGPTAuthError.portInUse(Int(fixed)))
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 case .cancelled:
                     started.isSet = true
                     continuation.resume(throwing: CancellationError())
@@ -81,9 +94,15 @@ final class LoopbackServer: @unchecked Sendable {
         }
     }
 
+    /// Closes the port and waits briefly until it is free, so the next sign-in can take it.
     func stop() {
+        let closed = DispatchSemaphore(value: 0)
+        listener.stateUpdateHandler = { state in
+            if case .cancelled = state { closed.signal() }
+        }
         listener.cancel()
         finish(.failure(CancellationError()))
+        _ = closed.wait(timeout: .now() + 2)
     }
 
     private func finish(_ result: Result<[String: String], Error>) {

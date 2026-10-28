@@ -11,7 +11,7 @@ public enum ProviderKind: String, Codable, Sendable, CaseIterable {
     case openAI
     /// A Google AI Studio API key.
     case gemini
-    /// Any server that speaks the OpenAI Chat Completions format: CLIProxyAPI, Ollama, LM Studio, OpenRouter.
+    /// Any server that speaks the OpenAI Chat Completions format: Ollama, LM Studio, OpenRouter, vLLM.
     case openAICompatible
 }
 

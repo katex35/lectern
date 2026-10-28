@@ -1,6 +1,6 @@
 import Foundation
 
-/// Any server with the OpenAI Chat Completions format: CLIProxyAPI, Ollama, LM Studio, OpenRouter, vLLM.
+/// Any server with the OpenAI Chat Completions format: Ollama, LM Studio, OpenRouter, vLLM.
 /// `baseURL` is the part before `/chat/completions`, for example `http://127.0.0.1:8317/v1`.
 public struct OpenAICompatibleProvider: LanguageModelProvider {
     public let kind = ProviderKind.openAICompatible

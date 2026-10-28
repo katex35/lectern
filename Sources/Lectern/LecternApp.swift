@@ -175,6 +175,7 @@ private struct TopBar: View {
 enum ProviderSummary {
     static func noteModel() -> String {
         let credentials = Credentials(store: KeychainStore(service: SettingsView.keychainService))
+        if (try? credentials.codexAccount()) != nil { return "ChatGPT" }
         if (try? credentials.chatGPTAccount())?.canUsePlan == true { return "ChatGPT" }
         if (try? credentials.apiKey(for: .anthropic)) != nil { return "Claude" }
         if (try? credentials.apiKey(for: .gemini)) != nil { return "Gemini" }

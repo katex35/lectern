@@ -66,7 +66,7 @@
 "process.transcribing" = "Yazıya dökülüyor %1$ld/%2$ld";
 "process.notes" = "Not yazılıyor";
 "process.questions" = "Sorular yazılıyor";
-"process.needsGemini" = "Yazıya dökmek için Gemini anahtarı ekle";
+"process.needsGemini" = "Yazıya dökmek için Google ile giriş yap ya da Gemini anahtarı ekle";
 "process.needsWriter" = "Not için hesap bağla";
 "process.failed" = "Olmadı, tekrar dene";
 "process.start" = "Notları hazırla";
@@ -86,7 +86,7 @@
 "settings.library" = "Kayıtların yeri";
 "settings.showInFinder" = "Finder'da göster";
 "settings.language" = "Dil";
-"settings.chatgpt.footer" = "Notlar, sorular ve özetler ChatGPT planından kullanılır. Şifren Lectern'e gelmez.";
+"settings.chatgpt.footer" = "Notlar, sorular, özetler ve kapaklar ChatGPT planından kullanılır; giriş Codex uygulamasının yaptığı gibi yapılır. Şifren Lectern'e gelmez.";
 "settings.gemini.hint" = "Google AI Studio anahtarı";
 "settings.claude.hint" = "Anthropic API anahtarı";
 "settings.openai.hint" = "OpenAI API anahtarı";
@@ -100,6 +100,9 @@
 "settings.signOutUnconfirmed" = "Çıkış yapıldı; OpenAI iptali doğrulayamadı";
 "settings.signOut" = "Çıkış yap";
 "settings.chatgpt.signIn" = "ChatGPT ile giriş";
+"settings.google.signIn" = "Google ile giriş";
+"settings.google.footer" = "Yazıya dökme Google hesabının Gemini kotasını kullanır; giriş Antigravity editörünün yaptığı gibi yapılır. AI Studio anahtarı gerekmez.";
+"settings.chatgpt.legacy" = "Lectern bağlandı · %@ · kapaklar için yeniden giriş yap";
 "settings.remove" = "Kaldır";
 "settings.save" = "Kaydet";
 "settings.getKey" = "Anahtar al";

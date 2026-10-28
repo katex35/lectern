@@ -10,12 +10,19 @@ enum Providers {
     /// One session for the whole app: refresh tokens rotate, and two sessions refreshing the same
     /// token would end the sign-in.
     private static var chatGPT: (subject: String, session: ChatGPTSession)?
+    // keyed by something that survives a token rotation, so a renewed account meets its own session
+    private static var codex: (accountID: String, session: CodexSession)?
+    private static var antigravity: (email: String, session: AntigravitySession)?
 
     /// Development: `LECTERN_FAKE_AI` runs the whole pipeline on stand-ins, without any account.
     private static let fake = ProcessInfo.processInfo.environment["LECTERN_FAKE_AI"] != nil
 
+    /// A linked Google account first, else a Gemini key.
     static func transcriber() -> (any Transcribing)? {
         if fake { return Snapshots.FakeTranscriber() }
+        if let account = (try? credentials.antigravityAccount()) ?? nil {
+            return AntigravityTranscriber(session: antigravitySession(account))
+        }
         guard let key = (try? credentials.apiKey(for: .gemini)) ?? nil else { return nil }
         return GeminiTranscriber(apiKey: key)
     }
@@ -23,6 +30,9 @@ enum Providers {
     /// The first connected service in the order the top bar names it, with the model to write with.
     static func writer() async throws -> SessionProcessor.Writer? {
         if fake { return SessionProcessor.Writer(provider: Snapshots.FakeWriter(), model: "fake") }
+        if let account = (try? credentials.codexAccount()) ?? nil {
+            return try await pick(OpenAIProvider(credential: .codex(codexSession(account))))
+        }
         if let account = (try? credentials.chatGPTAccount()) ?? nil, account.canUsePlan {
             return try await pick(OpenAIProvider(credential: .chatGPT(chatGPTSession(account))))
         }
@@ -59,9 +69,28 @@ enum Providers {
         return (writer.provider.kind, listed, writer.model)
     }
 
-    /// Forgets the shared ChatGPT session after a sign-in or sign-out in Settings.
+    /// Forgets the shared sessions after a sign-in or sign-out in Settings.
     static func accountsChanged() {
         chatGPT = nil
+        codex = nil
+        antigravity = nil
+    }
+
+    /// The Codex sign-in's session, for notes and covers.
+    static func codexSession(_ account: CodexAccount) -> CodexSession {
+        if let codex, codex.accountID == account.accountID { return codex.session }
+        let store = credentials
+        let session = CodexSession(account: account, auth: CodexAuth()) { updated in try? store.setCodexAccount(updated) }
+        codex = (account.accountID, session)
+        return session
+    }
+
+    static func antigravitySession(_ account: AntigravityAccount) -> AntigravitySession {
+        if let antigravity, antigravity.email == account.email { return antigravity.session }
+        let store = credentials
+        let session = AntigravitySession(account: account, auth: AntigravityAuth()) { updated in try? store.setAntigravityAccount(updated) }
+        antigravity = (account.email, session)
+        return session
     }
 
     private static func chatGPTSession(_ account: ChatGPTAccount) -> ChatGPTSession {
@@ -103,7 +132,7 @@ enum Providers {
 final class ProcessingCenter {
     enum State: Equatable {
         case running(ProcessingProgress)
-        /// Transcription needs a Gemini key.
+        /// Transcription needs a Google account or a Gemini key.
         case needsGemini
         /// The transcript is there; notes need a connected account.
         case needsWriter

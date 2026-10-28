@@ -1,33 +1,51 @@
 import Foundation
 
-/// OpenAI's Responses API, used with an API key or with a signed-in ChatGPT account.
+/// OpenAI's Responses API, used with an API key, with a signed-in ChatGPT account, or with a ChatGPT
+/// account linked through the Codex sign-in.
 ///
 /// With a ChatGPT account every request is `store: false, stream: true`, carries the whole history
 /// in `input`, and leaves out the fields that route does not accept (`max_output_tokens`,
 /// `temperature` and others): https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+///
+/// With the Codex sign-in the same requests go to ChatGPT's Codex backend, introduced as the Codex
+/// CLI, with `instructions` always present; the models are the ones that backend lists for the CLI.
 public struct OpenAIProvider: LanguageModelProvider {
     public enum Credential: Sendable {
         case apiKey(String)
         case chatGPT(ChatGPTSession)
+        case codex(CodexSession)
     }
 
     public var kind: ProviderKind {
-        if case .chatGPT = credential { return .chatGPT }
-        return .openAI
+        switch credential {
+        case .chatGPT, .codex: return .chatGPT
+        case .apiKey: return .openAI
+        }
     }
 
     let credential: Credential
     let baseURL: URL
     let http: HTTPClient
 
-    public init(credential: Credential, baseURL: URL = URL(string: "https://api.openai.com/v1")!,
-                session: URLSession = .shared) {
+    /// `baseURL` defaults to OpenAI's API, or to the Codex backend for a Codex sign-in.
+    public init(credential: Credential, baseURL: URL? = nil, session: URLSession = .shared) {
         self.credential = credential
-        self.baseURL = baseURL
+        if let baseURL {
+            self.baseURL = baseURL
+        } else if case .codex = credential {
+            self.baseURL = CodexAuth.backend
+        } else {
+            self.baseURL = URL(string: "https://api.openai.com/v1")!
+        }
         self.http = HTTPClient(session: session)
     }
 
     var isChatGPT: Bool { kind == .chatGPT }
+
+    var isCodex: Bool {
+        if case .codex = credential { return true }
+        return false
+    }
 
     func authorized(_ url: URL, freshToken: Bool) async throws -> URLRequest {
         var request = URLRequest(url: url)
@@ -37,10 +55,19 @@ public struct OpenAIProvider: LanguageModelProvider {
             token = key
         case .chatGPT(let session):
             token = freshToken ? try await session.refresh(force: true).accessToken : try await session.accessToken()
+        case .codex(let session):
+            token = freshToken ? try await session.refresh().accessToken : try await session.accessToken()
+            CodexAuth.apply(to: &request, token: token, accountID: await session.accountID())
+            return request
         }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return request
     }
+
+    /// The models the Codex backend offers the CLI, in the order its picker lists them; the backend
+    /// has no listing of its own.
+    public static let codexModels = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
+                                     "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
 
     // MARK: - models
 
@@ -61,6 +88,7 @@ public struct OpenAIProvider: LanguageModelProvider {
     }
 
     public func models() async throws -> [ModelInfo] {
+        if isCodex { return Self.codexModels.map { ModelInfo(id: $0) } }
         let list = try await retryingOnce { fresh in
             try await http.json(ModelList.self, try await authorized(baseURL.appendingPathComponent("models"), freshToken: fresh),
                                 errors: Self.error)
@@ -111,10 +139,11 @@ public struct OpenAIProvider: LanguageModelProvider {
     }
 
     func body(_ request: CompletionRequest) -> Body {
+        // the Codex backend wants `instructions` present, empty when there are none
         Body(model: request.model,
-             instructions: request.system.isEmpty ? nil : request.system,
+             instructions: request.system.isEmpty ? (isCodex ? "" : nil) : request.system,
              input: request.messages.map { Body.Message(role: $0.role.rawValue, content: $0.text) },
-             max_output_tokens: isChatGPT ? nil : request.maxOutputTokens)
+             max_output_tokens: isChatGPT && !isCodex ? nil : request.maxOutputTokens)
     }
 
     struct StreamEvent: Decodable {
@@ -160,6 +189,7 @@ public struct OpenAIProvider: LanguageModelProvider {
                 var urlRequest = try await provider.authorized(provider.baseURL.appendingPathComponent("responses"), freshToken: fresh)
                 urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                 try urlRequest.setJSON(body)
+                if provider.isCodex { urlRequest.timeoutInterval = 300 }
                 try await provider.run(urlRequest) { event in
                     if case .text = event { emitted = true }
                     emit(event)
