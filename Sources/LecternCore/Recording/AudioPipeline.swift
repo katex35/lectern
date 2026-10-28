@@ -50,8 +50,9 @@ public struct RecordingReport: Codable, Hashable, Sendable {
 }
 
 /// Converts every incoming buffer to 16 kHz mono, keeps the file's timeline equal to wall-clock time
-/// (missing input becomes silence) and feeds the AAC writer in order. All state lives on `queue`.
-final class AudioPipeline {
+/// (missing input becomes silence) and feeds the AAC writer in order. All state lives on `queue`,
+/// which is what makes handing it to other threads safe.
+final class AudioPipeline: @unchecked Sendable {
     enum Item {
         case audio(AVAudioPCMBuffer)
         case silence(Int)
