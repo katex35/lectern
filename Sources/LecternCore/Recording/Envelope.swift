@@ -4,24 +4,31 @@ import CryptoKit
 
 /// The loudness outline of a recording, for the scrubber.
 public enum Envelope {
-    /// `read`, kept in `cache` by path, size and date, so a long lecture is decoded only once.
+    /// `read`, kept in `cache` so a long lecture is decoded only once. One entry per file and bar count,
+    /// replaced when the file's size or date changes.
     public static func cached(_ url: URL, buckets: Int, in cache: URL) -> [Double] {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
         let modified = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        let key = SHA256.hash(data: Data("2|\(url.standardizedFileURL.path)|\(size)|\(modified)|\(buckets)".utf8))
+        let key = SHA256.hash(data: Data("3|\(url.standardizedFileURL.path)|\(buckets)".utf8))
             .map { String(format: "%02x", $0) }.joined()
         let file = cache.appendingPathComponent("\(key).json")
-        if let data = try? Data(contentsOf: file), let values = try? JSONDecoder().decode([Double].self, from: data),
-           values.count == buckets {
-            return values
+        if let data = try? Data(contentsOf: file), let entry = try? JSONDecoder().decode(CacheEntry.self, from: data),
+           entry.size == size, entry.modified == modified, entry.values.count == buckets {
+            return entry.values
         }
         let values = read(url, buckets: buckets)
-        if !values.isEmpty, let data = try? JSONEncoder().encode(values) {
+        if !values.isEmpty, let data = try? JSONEncoder().encode(CacheEntry(size: size, modified: modified, values: values)) {
             try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             try? data.write(to: file, options: .atomic)
         }
         return values
+    }
+
+    private struct CacheEntry: Codable {
+        let size: Int64
+        let modified: Double
+        let values: [Double]
     }
 
     /// Loudness per bucket, 0...1 between the file's quiet floor and its loudest bucket, read in one pass.

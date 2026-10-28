@@ -85,7 +85,7 @@ private struct StatusLine: View {
         switch recorder.phase {
         case .starting: return L("recording.starting")
         case .onBreak: return L("recording.break")
-        case .stopping: return L("recording.saving")
+        case .pausing, .stopping: return L("recording.saving")
         case .failed: return L("recording.failed")
         default:
             if let course = recorder.course {
@@ -288,14 +288,23 @@ struct Composer: View {
         guard let session = model.recorder.session else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = BoardPhotos.types
         guard panel.runModal() == .OK else { return }
         let board = model.folder(of: session).appendingPathComponent("board", isDirectory: true)
         try? FileManager.default.createDirectory(at: board, withIntermediateDirectories: true)
+        var added = 0
         for url in panel.urls {
-            let target = board.appendingPathComponent(url.lastPathComponent)
-            if !FileManager.default.fileExists(atPath: target.path) { try? FileManager.default.copyItem(at: url, to: target) }
+            // two IMG_0001.jpg from different folders are both kept
+            let name = url.deletingPathExtension().lastPathComponent
+            let suffix = url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)"
+            var target = board.appendingPathComponent(url.lastPathComponent)
+            var number = 2
+            while FileManager.default.fileExists(atPath: target.path) {
+                target = board.appendingPathComponent("\(name)-\(number)\(suffix)")
+                number += 1
+            }
+            if (try? FileManager.default.copyItem(at: url, to: target)) != nil { added += 1 }
         }
-        model.recorder.addNote(L("recording.photoAdded", panel.urls.count))
+        if added > 0 { model.recorder.addNote(L("recording.photoAdded", added)) }
     }
 }

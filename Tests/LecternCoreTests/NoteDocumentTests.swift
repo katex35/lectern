@@ -24,6 +24,14 @@ final class MathTextTests: XCTestCase {
         XCTAssertEqual(MathText.plain(latex), "−log (h), y=1\n−log (1−h), y=0")
     }
 
+    func testMalformedInputEnds() {
+        XCTAssertEqual(MathText.plain("a \\"), "a")
+        XCTAssertEqual(MathText.plain("{x + 1"), "x + 1")
+        XCTAssertEqual(MathText.plain("x^"), "x")
+        XCTAssertEqual(MathText.plain("\\frac{a}"), "a/")
+        XCTAssertEqual(MathText.plain("\\left"), "")
+    }
+
     func testSuperscriptTranspose() {
         XCTAssertEqual(MathText.plain("w^Tx"), "wᵀx")
         XCTAssertEqual(MathText.plain("3^n"), "3ⁿ")
@@ -72,6 +80,12 @@ final class NoteDocumentTests: XCTestCase {
             .bullet(depth: 1, text: "iç madde"),
             .paragraph("satır bir satır iki"),
         ])
+    }
+
+    func testUnclosedFormulasStayText() {
+        XCTAssertEqual(NoteDocument.parse("Önce \\(x_1 kaldı"), [.paragraph("Önce \\(x_1 kaldı")])
+        XCTAssertEqual(NoteDocument.parse("\\[\nU=B\n\nSonra"), [.paragraph("\\[ U=B"), .paragraph("Sonra")])
+        XCTAssertEqual(NoteDocument.parse("1."), [.paragraph("1.")])
     }
 
     func testSectionNumbersAreNotListItems() {

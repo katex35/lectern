@@ -39,6 +39,20 @@ enum Snapshots {
             model.recorder.addNote("Sınavda çıkabilir dedi")
             await pause(1.2)
             save(window, to: folder.appendingPathComponent("3-recording.png"))
+            // a break with Stop pressed while the first half is still closing ends the lecture
+            async let pausing: Void = model.recorder.takeBreak()
+            await model.recorder.stop()
+            await pausing
+            await pause(1)
+            save(window, to: folder.appendingPathComponent("3b-stop-during-break.png"))
+            // a real break, then the second half joins the same session
+            model.record(model.courses.first)
+            await pause(3)
+            await model.recorder.takeBreak()
+            await pause(1)
+            save(window, to: folder.appendingPathComponent("3c-break.png"))
+            await model.recorder.resume()
+            await pause(3)
             await model.recorder.stop()
             await pause(2)
             save(window, to: folder.appendingPathComponent("4-after.png"))

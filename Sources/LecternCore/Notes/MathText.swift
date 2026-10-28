@@ -145,9 +145,10 @@ public enum MathText {
         }
 
         private func script(_ text: String, superscript: Bool) -> String {
+            guard !text.isEmpty else { return "" }
             let map = superscript ? Self.superscripts : Self.subscripts
             let mapped = text.map { map[$0] }
-            if !text.isEmpty, mapped.allSatisfy({ $0 != nil }) { return String(mapped.compactMap { $0 }) }
+            if mapped.allSatisfy({ $0 != nil }) { return String(mapped.compactMap { $0 }) }
             let mark = superscript ? "^" : "_"
             return text.count == 1 ? mark + text : "\(mark)(\(text))"
         }

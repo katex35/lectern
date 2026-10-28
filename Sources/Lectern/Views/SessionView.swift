@@ -3,6 +3,7 @@ import AVFoundation
 import LecternCore
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SessionView: View {
     @Environment(AppModel.self) private var model
@@ -174,7 +175,9 @@ private struct MarkersList: View {
                 ForEach(session.markers) { marker in
                     let time = player.position(of: marker)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        TimeChip(time: time) { player.play(at: time) }
+                        // a note on a recording that cannot be played keeps its time but no jump
+                        TimeChip(time: time ?? marker.time) { if let time { player.play(at: time) } }
+                            .disabled(time == nil)
                         Text(marker.text).font(.system(size: 14.5))
                     }
                 }
@@ -203,12 +206,17 @@ struct TimeChip: View {
     }
 }
 
-private struct BoardPhotos: View {
+struct BoardPhotos: View {
+    /// What can be added and is shown: the formats phones and screenshots produce.
+    static let types: [UTType] = [.jpeg, .png, .heic]
+
     let folder: URL
 
     var body: some View {
         let images = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil))?
-            .filter { ["jpg", "jpeg", "png", "heic"].contains($0.pathExtension.lowercased()) }
+            .filter { url in
+                UTType(filenameExtension: url.pathExtension).map { type in Self.types.contains { type.conforms(to: $0) } } ?? false
+            }
             .sorted { $0.lastPathComponent < $1.lastPathComponent } ?? []
         if !images.isEmpty {
             ScrollView(.horizontal) {
@@ -401,14 +409,17 @@ final class SessionPlayer {
         return await Task.detached(priority: .userInitiated) {
             parts.flatMap { part in
                 let bars = max(1, Int((120 * part.length / total).rounded()))
-                return Envelope.cached(part.url, buckets: bars, in: cache).map { CGFloat($0) }
+                let values = Envelope.cached(part.url, buckets: bars, in: cache)
+                // a part that cannot be read keeps its width, so later parts stay under their audio
+                return (values.isEmpty ? Array(repeating: 0, count: bars) : values).map { CGFloat($0) }
             }
         }.value
     }
 
     /// Where a note typed during the lecture sits on the session timeline.
-    func position(of marker: Marker) -> TimeInterval {
-        (offsets[marker.recording] ?? 0) + marker.time
+    /// nil while loading, or when its recording could not be put on the timeline.
+    func position(of marker: Marker) -> TimeInterval? {
+        offsets[marker.recording].map { $0 + marker.time }
     }
 
     func toggle() {

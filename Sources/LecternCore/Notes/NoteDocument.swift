@@ -55,26 +55,27 @@ public enum NoteDocument {
             let isFirstLine = atStart
             defer { previousBlank = false; atStart = false }
 
-            // displayed formula: \[ ... \] or $$ ... $$, on one line or several
+            // displayed formula: \[ ... \] or $$ ... $$, on one line or several;
+            // one that is never closed stays ordinary text instead of swallowing the rest of the notes
             if let opener = ["\\[", "$$"].first(where: { line.hasPrefix($0) }) {
                 let closer = opener == "\\[" ? "\\]" : "$$"
                 var body = String(line.dropFirst(opener.count))
+                var closed = false
                 if let end = body.range(of: closer) {
                     body = String(body[..<end.lowerBound])
-                } else {
-                    while i < lines.count {
-                        let next = lines[i]
-                        i += 1
-                        if let end = next.range(of: closer) {
-                            body += "\n" + next[..<end.lowerBound]
-                            break
-                        }
-                        body += "\n" + next
-                    }
+                    closed = true
+                } else if let last = lines[i...].firstIndex(where: { $0.contains(closer) }),
+                          let end = lines[last].range(of: closer) {
+                    for next in lines[i..<last] { body += "\n" + next }
+                    body += "\n" + lines[last][..<end.lowerBound]
+                    i = last + 1
+                    closed = true
                 }
-                let formula = MathText.plain(body)
-                if !formula.isEmpty { blocks.append(.formula(formula)) }
-                continue
+                if closed {
+                    let formula = MathText.plain(body)
+                    if !formula.isEmpty { blocks.append(.formula(formula)) }
+                    continue
+                }
             }
 
             if line.hasPrefix("#") {

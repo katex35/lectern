@@ -115,6 +115,8 @@ final class RecordingController {
         case idle
         case starting
         case recording
+        /// Closing the first half before a break.
+        case pausing
         /// Between the two halves of a lecture; the next recording joins the same session.
         case onBreak
         case stopping
@@ -136,6 +138,12 @@ final class RecordingController {
     weak var model: AppModel?
     private var client: RecorderClient?
     private var ticker: Timer?
+    /// Stop was pressed while the first half was still closing for a break.
+    private var stopAfterPause = false
+    /// The session a break belongs to; kept when resuming fails so a retry still joins it.
+    private var breakSession: Session?
+    /// A helper that ended before `start` had taken it over, with its report.
+    private var endedEarly: (client: ObjectIdentifier, report: RecordingReport)?
 
     private func startTicking() {
         ticker?.invalidate()
@@ -146,26 +154,28 @@ final class RecordingController {
 
     var isActive: Bool {
         switch phase {
-        case .starting, .recording, .onBreak, .stopping: return true
+        case .starting, .recording, .pausing, .onBreak, .stopping: return true
         case .idle, .failed: return false
         }
     }
 
     func elapsed(at date: Date) -> TimeInterval {
-        guard phase == .recording || phase == .stopping, let startedAt else { return 0 }
+        guard phase == .recording || phase == .pausing || phase == .stopping, let startedAt else { return 0 }
         return max(0, date.timeIntervalSince(startedAt))
     }
 
     func start(course: Course?) async {
         guard let model, phase == .idle || phase == .onBreak || isFailed else { return }
-        let joining = phase == .onBreak
+        // a break, or a failed attempt to come back from one for the same course, continues that session
+        let joining = phase == .onBreak || (isFailed && breakSession != nil && breakSession?.courseID == course?.id)
         phase = .starting
+        var startedClient: RecorderClient?
         do {
             let library = model.library
             let now = Date()
             var session: Session
-            if joining, let current = self.session, let fresh = library.reload(current) {
-                session = fresh
+            if joining, let current = breakSession {
+                session = library.reload(current) ?? current
             } else if let course {
                 let week = library.settings().semester.map { model.schedule.week(of: now, semester: $0) }
                 session = try library.lectureSession(course: course, date: now, week: week)
@@ -175,11 +185,15 @@ final class RecordingController {
             let file = library.newRecordingFile(in: session, start: now)
             let client = RecorderClient(helper: RecorderClient.defaultHelper(),
                                         output: library.folder(of: session).appendingPathComponent(file))
-            client.onEvent = { [weak self] event in
-                Task { @MainActor in self?.handle(event) }
+            client.onEvent = { [weak self, weak client] event in
+                Task { @MainActor in
+                    guard let self, let client else { return }
+                    self.handle(event, from: client)
+                }
             }
             let simulate = ProcessInfo.processInfo.environment["LECTERN_SIMULATE"].flatMap(Double.init)
             let started = try await client.start(simulate: simulate)
+            startedClient = client
             var info = RecordingInfo(file: file, start: started, inProgress: true)
             info.recorderPID = client.pid
             session.recordings.append(info)
@@ -190,11 +204,20 @@ final class RecordingController {
             self.file = file
             startedAt = started
             breakStartedAt = nil
+            breakSession = nil
             if !joining { notes = [] }
             startTicking()
             withAnimation(Theme.ease) { phase = .recording }
             model.reload()
+            // the helper may have quit between saying it was ready and being taken over here
+            if let early = endedEarly, early.client == ObjectIdentifier(client) {
+                endedEarly = nil
+                apply(early.report)
+                close()
+            }
         } catch {
+            // a helper that did start must not keep recording with nobody to stop it
+            if let startedClient { _ = await startedClient.stop() }
             phase = .failed(error.localizedDescription)
         }
     }
@@ -218,7 +241,14 @@ final class RecordingController {
     /// Ends this half of the lecture; `resume` starts the next recording in the same session.
     func takeBreak() async {
         guard phase == .recording else { return }
+        phase = .pausing
         await finishRecording()
+        guard phase == .pausing else { return }
+        if stopAfterPause {
+            close()
+            return
+        }
+        breakSession = session
         withAnimation(Theme.ease) {
             phase = .onBreak
             breakStartedAt = Date()
@@ -231,14 +261,19 @@ final class RecordingController {
     }
 
     func stop() async {
-        if phase == .onBreak {
+        switch phase {
+        case .onBreak:
             close()
-            return
+        case .pausing:
+            // the break finishes closing the recording, then ends the lecture
+            stopAfterPause = true
+        case .recording:
+            phase = .stopping
+            await finishRecording()
+            close()
+        default:
+            break
         }
-        guard phase == .recording else { return }
-        phase = .stopping
-        await finishRecording()
-        close()
     }
 
     private func close() {
@@ -248,6 +283,8 @@ final class RecordingController {
         phase = .idle
         startedAt = nil
         breakStartedAt = nil
+        breakSession = nil
+        stopAfterPause = false
         client = nil
         model?.reload()
         if let finished, let model { model.open(model.library.reload(finished) ?? finished) }
@@ -276,7 +313,14 @@ final class RecordingController {
         self.session = session
     }
 
-    private func handle(_ event: RecorderClient.Event) {
+    private func handle(_ event: RecorderClient.Event, from sender: RecorderClient) {
+        guard sender === client else {
+            // only an end matters before `start` has taken the helper over; it is applied there
+            if case .ended(let report) = event, phase == .starting {
+                endedEarly = (ObjectIdentifier(sender), report)
+            }
+            return
+        }
         switch event {
         case .level(_, let peak):
             // dBFS to 0...1 over the last 60 dB
