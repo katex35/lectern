@@ -1,1 +1,101 @@
 "app.name" = "Lectern";
+
+"meeting.untitled" = "Toplantı";
+
+"sidebar.new" = "Yeni kayıt";
+"sidebar.courses" = "Dersler";
+"sidebar.recent" = "Son kayıtlar";
+"sidebar.recordNext" = "%@ kaydını başlat";
+"sidebar.settings" = "Ayarlar";
+
+"session.week" = "%ld. hafta";
+"session.meeting" = "Toplantı";
+
+"time.today" = "Bugün";
+"time.tomorrow" = "Yarın";
+"time.yesterday" = "Dün";
+"time.hoursMinutes" = "%1$d sa %2$d dk";
+"time.minutes" = "%d dk";
+"time.seconds" = "%d sn";
+
+"home.thisWeek" = "Bu hafta";
+"home.ready" = "Notları hazır";
+"home.greeting.night" = "İyi geceler, %@";
+"home.greeting.morning" = "Günaydın, %@";
+"home.greeting.afternoon" = "İyi günler, %@";
+"home.greeting.evening" = "İyi akşamlar, %@";
+"home.noSchedule" = "Ders programı yok";
+"home.record" = "Kayda başla";
+"home.meeting" = "Toplantı";
+"home.onNow" = "Ders şu an sürüyor";
+"home.addSchedule" = "Ders programını eklersen dersleri ben hatırlatırım";
+
+"recording.starting" = "Mikrofon açılıyor";
+"recording.break" = "Mola";
+"recording.saving" = "Kaydediliyor";
+"recording.failed" = "Kayıt başlamadı";
+"recording.elapsed" = "Kayıt süresi";
+"recording.breakHelp" = "Mola ver; sonraki kayıt aynı derse eklenir";
+"recording.takeBreak" = "Mola";
+"recording.stop" = "Kaydı bitir";
+"recording.breakNote" = "Bitince ikinci kayıt aynı derse eklenir";
+"recording.resume" = "Devam et";
+"recording.finish" = "Dersi bitir";
+"recording.retry" = "Yeniden dene";
+"recording.addNote" = "Not ekle";
+"recording.addPhoto" = "Fotoğraf ekle";
+"recording.mark" = "Bu anı işaretle";
+"recording.marked" = "İşaret";
+"recording.photoAdded" = "%ld fotoğraf eklendi";
+"recording.live" = "Kayıt sürüyor";
+
+"composer.send" = "Gönder";
+
+"session.askNeedsAccount" = "Soru sormak için bir hesap bağla.";
+"session.openSettings" = "Ayarları aç";
+"session.ask" = "Bu derse sor";
+"session.missing" = "Bu kayıt bulunamadı";
+"session.tab.notes" = "Notlar";
+"session.tab.transcript" = "Transkript";
+"session.tab.questions" = "Sorular";
+"session.notesPending" = "Notlar henüz yazılmadı.";
+"session.transcriptPending" = "Transkript henüz hazır değil.";
+"session.questionsPending" = "Sorular henüz hazırlanmadı.";
+"session.playFrom" = "%@ anından dinle";
+
+"player.pause" = "Duraklat";
+"player.play" = "Dinle";
+
+"menu.record" = "Kayda başla";
+"menu.meeting" = "Toplantı kaydı";
+"menu.toggleSidebar" = "Kenar çubuğu";
+"menu.openWindow" = "Pencereyi aç";
+
+"top.noModel" = "Hesap bağlı değil";
+
+"settings.accounts" = "Hesaplar";
+"settings.general" = "Genel";
+"settings.library" = "Kayıtların yeri";
+"settings.showInFinder" = "Finder'da göster";
+"settings.language" = "Dil";
+"settings.chatgpt.footer" = "Notlar, sorular ve özetler ChatGPT planından kullanılır. Şifren Lectern'e gelmez.";
+"settings.gemini.hint" = "Google AI Studio anahtarı";
+"settings.claude.hint" = "Anthropic API anahtarı";
+"settings.openai.hint" = "OpenAI API anahtarı";
+"settings.endpoint.footer" = "Kendi bilgisayarında ya da ağında çalışan, OpenAI biçiminde bir sunucu.";
+"settings.notConnected" = "Bağlı değil";
+"settings.chatgpt.noPlan" = "Bağlandı ama plan kullanımına izin verilmedi";
+"settings.connected" = "Lectern bağlandı · %@";
+"settings.connectedPlain" = "Lectern bağlandı";
+"settings.chatgpt.waiting" = "Tarayıcıda onayla";
+"settings.chatgpt.browserPage" = "<!doctype html><meta charset=utf-8><title>Lectern</title><body style=\"font-family:-apple-system;display:grid;place-items:center;height:90vh\"><p>Lectern bağlandı. Bu sekmeyi kapatabilirsin.</p></body>";
+"settings.signOutUnconfirmed" = "Çıkış yapıldı; OpenAI iptali doğrulayamadı";
+"settings.signOut" = "Çıkış yap";
+"settings.chatgpt.signIn" = "ChatGPT ile giriş";
+"settings.remove" = "Kaldır";
+"settings.save" = "Kaydet";
+"settings.getKey" = "Anahtar al";
+"settings.endpoint" = "Kendi sunucun";
+"settings.endpoint.key" = "Anahtar (varsa)";
+"settings.check" = "Bağlan";
+"settings.endpoint.found" = "Lectern bağlandı · %ld model";

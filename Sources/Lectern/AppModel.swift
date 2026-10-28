@@ -1,0 +1,294 @@
+import AppKit
+import Foundation
+import LecternCore
+import Observation
+import SwiftUI
+
+enum Screen: Hashable {
+    case home
+    case recording
+    case session(SessionRef)
+}
+
+/// A session is unique by its folder inside a course (or inside meetings).
+struct SessionRef: Hashable {
+    var courseID: String?
+    var id: String
+
+    init(_ session: Session) {
+        courseID = session.courseID
+        id = session.id
+    }
+}
+
+@MainActor @Observable
+final class AppModel {
+    let library: Library
+    let schedule = Schedule()
+    let recorder = RecordingController()
+    private(set) var courses: [Course] = []
+    /// Every lecture and meeting, newest first.
+    private(set) var sessions: [Session] = []
+    var screen: Screen = .home
+    var sidebarVisible = true
+    /// The service that writes notes, read from the keychain at launch and after Settings change it.
+    private(set) var noteModelName = ""
+
+    init(library: Library) {
+        self.library = library
+        recorder.model = self
+        reload()
+        // an empty library can start from the folders of the original ders-kayit tool (copied, never moved)
+        if courses.isEmpty, let source = ProcessInfo.processInfo.environment["LECTERN_IMPORT"], !source.isEmpty {
+            let url = URL(fileURLWithPath: (source as NSString).expandingTildeInPath, isDirectory: true)
+            if DersKayitImporter.canImport(url) {
+                _ = try? DersKayitImporter(source: url, library: library).run()
+                reload()
+            }
+        }
+        refreshAccounts()
+    }
+
+    func refreshAccounts() {
+        noteModelName = ProviderSummary.noteModel()
+    }
+
+    /// The library given in `LECTERN_LIBRARY`, or ~/Documents/Lectern.
+    static func defaultLibrary() -> Library {
+        if let path = ProcessInfo.processInfo.environment["LECTERN_LIBRARY"], !path.isEmpty {
+            return Library(root: URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true))
+        }
+        return Library(root: Library.defaultRoot)
+    }
+
+    func reload() {
+        courses = library.courses()
+        sessions = (courses.flatMap { library.sessions(ofCourse: $0.id) } + library.meetings())
+            .sorted { $0.date > $1.date }
+    }
+
+    func course(_ id: String?) -> Course? {
+        courses.first { $0.id == id }
+    }
+
+    func session(_ ref: SessionRef) -> Session? {
+        sessions.first { $0.id == ref.id && $0.courseID == ref.courseID }
+    }
+
+    func folder(of session: Session) -> URL {
+        library.folder(of: session)
+    }
+
+    var nextLecture: (course: Course, start: Date)? {
+        schedule.next(after: Date(), courses: courses).map { ($0.match.course, $0.start) }
+    }
+
+    /// The course whose slot is on now (with lead and trail time).
+    var currentLecture: Course? {
+        schedule.current(at: Date(), courses: courses)?.course
+    }
+
+    func open(_ session: Session) {
+        withAnimation(Theme.ease) { screen = .session(SessionRef(session)) }
+    }
+
+    func goHome() {
+        withAnimation(Theme.ease) { screen = recorder.isActive ? .recording : .home }
+    }
+
+    /// Records the lecture on now, the given course, or a meeting when `course` is nil and none is on.
+    func record(_ course: Course?, meeting: Bool = false) {
+        withAnimation(Theme.ease) { screen = .recording }
+        let target = meeting ? nil : (course ?? currentLecture)
+        Task { await recorder.start(course: target) }
+    }
+
+    /// Text in the session folder (`notes.md`, `transcript.txt`, ...), nil when missing.
+    func text(_ file: String, in session: Session) -> String? {
+        try? String(contentsOf: folder(of: session).appendingPathComponent(file), encoding: .utf8)
+    }
+}
+
+@MainActor @Observable
+final class RecordingController {
+    enum Phase: Equatable {
+        case idle
+        case starting
+        case recording
+        /// Between the two halves of a lecture; the next recording joins the same session.
+        case onBreak
+        case stopping
+        case failed(String)
+    }
+
+    private(set) var phase: Phase = .idle
+    private(set) var startedAt: Date?
+    private(set) var breakStartedAt: Date?
+    private(set) var session: Session?
+    private(set) var course: Course?
+    private(set) var file: String?
+    /// Recent loudness, 0...1, oldest first.
+    private(set) var levels: [CGFloat] = Array(repeating: 0, count: 56)
+    private(set) var notes: [Marker] = []
+    /// Advances once a second while active; the menu bar label reads it, since a TimelineView there
+    /// keeps the status item redrawing without pause.
+    private(set) var tick = Date()
+    weak var model: AppModel?
+    private var client: RecorderClient?
+    private var ticker: Timer?
+
+    private func startTicking() {
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick = Date() }
+        }
+    }
+
+    var isActive: Bool {
+        switch phase {
+        case .starting, .recording, .onBreak, .stopping: return true
+        case .idle, .failed: return false
+        }
+    }
+
+    func elapsed(at date: Date) -> TimeInterval {
+        guard phase == .recording || phase == .stopping, let startedAt else { return 0 }
+        return max(0, date.timeIntervalSince(startedAt))
+    }
+
+    func start(course: Course?) async {
+        guard let model, phase == .idle || phase == .onBreak || isFailed else { return }
+        let joining = phase == .onBreak
+        phase = .starting
+        do {
+            let library = model.library
+            let now = Date()
+            var session: Session
+            if joining, let current = self.session, let fresh = library.reload(current) {
+                session = fresh
+            } else if let course {
+                let week = library.settings().semester.map { model.schedule.week(of: now, semester: $0) }
+                session = try library.lectureSession(course: course, date: now, week: week)
+            } else {
+                session = try library.newMeeting(title: L("meeting.untitled"), date: now)
+            }
+            let file = library.newRecordingFile(in: session, start: now)
+            let client = RecorderClient(helper: RecorderClient.defaultHelper(),
+                                        output: library.folder(of: session).appendingPathComponent(file))
+            client.onEvent = { [weak self] event in
+                Task { @MainActor in self?.handle(event) }
+            }
+            let simulate = ProcessInfo.processInfo.environment["LECTERN_SIMULATE"].flatMap(Double.init)
+            let started = try await client.start(simulate: simulate)
+            var info = RecordingInfo(file: file, start: started, inProgress: true)
+            info.recorderPID = client.pid
+            session.recordings.append(info)
+            try library.save(session)
+            self.client = client
+            self.session = session
+            self.course = course ?? model.course(session.courseID)
+            self.file = file
+            startedAt = started
+            breakStartedAt = nil
+            if !joining { notes = [] }
+            startTicking()
+            withAnimation(Theme.ease) { phase = .recording }
+            model.reload()
+        } catch {
+            phase = .failed(error.localizedDescription)
+        }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = phase { return true }
+        return false
+    }
+
+    func addNote(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard phase == .recording, !trimmed.isEmpty, let file, var session, let model else { return }
+        let marker = Marker(recording: file, time: elapsed(at: Date()), text: trimmed)
+        session = model.library.reload(session) ?? session
+        session.markers.append(marker)
+        try? model.library.save(session)
+        self.session = session
+        withAnimation(Theme.ease) { notes.append(marker) }
+    }
+
+    /// Ends this half of the lecture; `resume` starts the next recording in the same session.
+    func takeBreak() async {
+        guard phase == .recording else { return }
+        await finishRecording()
+        withAnimation(Theme.ease) {
+            phase = .onBreak
+            breakStartedAt = Date()
+        }
+    }
+
+    func resume() async {
+        guard phase == .onBreak else { return }
+        await start(course: course)
+    }
+
+    func stop() async {
+        if phase == .onBreak {
+            close()
+            return
+        }
+        guard phase == .recording else { return }
+        phase = .stopping
+        await finishRecording()
+        close()
+    }
+
+    private func close() {
+        let finished = session
+        ticker?.invalidate()
+        ticker = nil
+        phase = .idle
+        startedAt = nil
+        breakStartedAt = nil
+        client = nil
+        model?.reload()
+        if let finished, let model { model.open(model.library.reload(finished) ?? finished) }
+    }
+
+    private func finishRecording() async {
+        let report = await client?.stop()
+        apply(report)
+    }
+
+    private func apply(_ report: RecordingReport?) {
+        guard let model, let file, let current = session else { return }
+        var session = model.library.reload(current) ?? current
+        if let index = session.recordings.firstIndex(where: { $0.file == file }) {
+            session.recordings[index].inProgress = false
+            session.recordings[index].recorderPID = nil
+            if let report {
+                session.recordings[index].duration = report.duration
+                session.recordings[index].device = report.device
+                session.recordings[index].gaps = report.gaps
+                session.recordings[index].deviceChanges = report.deviceChanges
+                session.recordings[index].problem = report.status == .failed ? report.error : nil
+            }
+        }
+        try? model.library.save(session)
+        self.session = session
+    }
+
+    private func handle(_ event: RecorderClient.Event) {
+        switch event {
+        case .level(_, let peak):
+            // dBFS to 0...1 over the last 60 dB
+            let value = CGFloat(min(1, max(0, (peak + 60) / 60)))
+            levels.removeFirst()
+            levels.append(value)
+        case .gap:
+            break
+        case .ended(let report):
+            // the helper stopped on its own (error or maximum length)
+            apply(report)
+            close()
+        }
+    }
+}

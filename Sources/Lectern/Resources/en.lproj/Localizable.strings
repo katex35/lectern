@@ -1,1 +1,101 @@
 "app.name" = "Lectern";
+
+"meeting.untitled" = "Meeting";
+
+"sidebar.new" = "New recording";
+"sidebar.courses" = "Courses";
+"sidebar.recent" = "Recent";
+"sidebar.recordNext" = "Start recording %@";
+"sidebar.settings" = "Settings";
+
+"session.week" = "Week %ld";
+"session.meeting" = "Meeting";
+
+"time.today" = "Today";
+"time.tomorrow" = "Tomorrow";
+"time.yesterday" = "Yesterday";
+"time.hoursMinutes" = "%1$dh %2$dm";
+"time.minutes" = "%d min";
+"time.seconds" = "%d s";
+
+"home.thisWeek" = "This week";
+"home.ready" = "Notes ready";
+"home.greeting.night" = "Good night, %@";
+"home.greeting.morning" = "Good morning, %@";
+"home.greeting.afternoon" = "Good afternoon, %@";
+"home.greeting.evening" = "Good evening, %@";
+"home.noSchedule" = "No timetable yet";
+"home.record" = "Start recording";
+"home.meeting" = "Meeting";
+"home.onNow" = "Class is on now";
+"home.addSchedule" = "Add your timetable and I will remind you of each class";
+
+"recording.starting" = "Opening the microphone";
+"recording.break" = "Break";
+"recording.saving" = "Saving";
+"recording.failed" = "Recording did not start";
+"recording.elapsed" = "Recording time";
+"recording.breakHelp" = "Take a break; the next recording joins the same class";
+"recording.takeBreak" = "Break";
+"recording.stop" = "Stop recording";
+"recording.breakNote" = "After the break the second recording joins the same class";
+"recording.resume" = "Resume";
+"recording.finish" = "End class";
+"recording.retry" = "Try again";
+"recording.addNote" = "Add a note";
+"recording.addPhoto" = "Add photos";
+"recording.mark" = "Mark this moment";
+"recording.marked" = "Mark";
+"recording.photoAdded" = "%ld photos added";
+"recording.live" = "Recording";
+
+"composer.send" = "Send";
+
+"session.askNeedsAccount" = "Connect an account to ask questions.";
+"session.openSettings" = "Open Settings";
+"session.ask" = "Ask about this class";
+"session.missing" = "This recording could not be found";
+"session.tab.notes" = "Notes";
+"session.tab.transcript" = "Transcript";
+"session.tab.questions" = "Questions";
+"session.notesPending" = "Notes are not written yet.";
+"session.transcriptPending" = "The transcript is not ready yet.";
+"session.questionsPending" = "Questions are not ready yet.";
+"session.playFrom" = "Play from %@";
+
+"player.pause" = "Pause";
+"player.play" = "Play";
+
+"menu.record" = "Start recording";
+"menu.meeting" = "Record a meeting";
+"menu.toggleSidebar" = "Sidebar";
+"menu.openWindow" = "Open window";
+
+"top.noModel" = "No account connected";
+
+"settings.accounts" = "Accounts";
+"settings.general" = "General";
+"settings.library" = "Recordings folder";
+"settings.showInFinder" = "Show in Finder";
+"settings.language" = "Language";
+"settings.chatgpt.footer" = "Notes, questions and summaries use your ChatGPT plan. Your password never reaches Lectern.";
+"settings.gemini.hint" = "Google AI Studio key";
+"settings.claude.hint" = "Anthropic API key";
+"settings.openai.hint" = "OpenAI API key";
+"settings.endpoint.footer" = "A server on your computer or network that speaks the OpenAI format.";
+"settings.notConnected" = "Not connected";
+"settings.chatgpt.noPlan" = "Signed in, but plan usage was not allowed";
+"settings.connected" = "Lectern connected · %@";
+"settings.connectedPlain" = "Lectern connected";
+"settings.chatgpt.waiting" = "Confirm in your browser";
+"settings.chatgpt.browserPage" = "<!doctype html><meta charset=utf-8><title>Lectern</title><body style=\"font-family:-apple-system;display:grid;place-items:center;height:90vh\"><p>Lectern is connected. You can close this tab.</p></body>";
+"settings.signOutUnconfirmed" = "Signed out; OpenAI could not confirm the revocation";
+"settings.signOut" = "Sign out";
+"settings.chatgpt.signIn" = "Sign in with ChatGPT";
+"settings.remove" = "Remove";
+"settings.save" = "Save";
+"settings.getKey" = "Get a key";
+"settings.endpoint" = "Your own server";
+"settings.endpoint.key" = "Key (if any)";
+"settings.check" = "Connect";
+"settings.endpoint.found" = "Lectern connected · %ld models";
