@@ -154,6 +154,27 @@ final class RecorderTests: XCTestCase {
         XCTAssertGreaterThan(try decodedDuration(copy), 1.9)
     }
 
+    func testInterruptedRecordingIsRepairedWithoutLoss() async throws {
+        let url = folder.appendingPathComponent("recording.m4a")
+        var config = RecorderConfiguration()
+        config.fragmentInterval = 1
+        let recorder = Recorder(output: url, configuration: config)
+        recorder.startSynthetic(SyntheticSource(duration: 60, realTime: true))
+        try await Task.sleep(nanoseconds: 4_600_000_000)
+        let crashed = folder.appendingPathComponent("crashed.m4a")
+        try FileManager.default.copyItem(at: url, to: crashed)
+        await recorder.stop()
+
+        XCTAssertTrue(RecordingRecovery.isFragmented(crashed))
+        XCTAssertFalse(RecordingRecovery.isFragmented(url))
+        let result = try await RecordingRecovery.repair(crashed)
+        XCTAssertFalse(RecordingRecovery.isFragmented(crashed))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: result.original.path), "original kept")
+        XCTAssertGreaterThan(result.duration, 2.9)
+        // no encoder priming left in front: beeps stay on whole seconds
+        XCTAssertTrue(Set(1...3).isSubset(of: try wholeSeconds(crashed)))
+    }
+
     func testNeverOverwritesARecording() async throws {
         let url = folder.appendingPathComponent("recording.m4a")
         try Data("old".utf8).write(to: url)

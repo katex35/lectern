@@ -50,6 +50,7 @@ public final class Recorder: @unchecked Sendable {
     private var finalReport: RecordingReport?
     private var stopWaiters: [CheckedContinuation<RecordingReport, Never>] = []
     private var stopping = false
+    private var autoStopped = false   // stopped by the recorder itself (maximum length)
 
     public init(output: URL, configuration: RecorderConfiguration = .init()) {
         self.output = output
@@ -168,7 +169,7 @@ public final class Recorder: @unchecked Sendable {
             finalReport = report
             let w = stopWaiters
             stopWaiters = []
-            return (w, !stopping)
+            return (w, !stopping || autoStopped)
         }
         watchdog?.cancel()
         if sleepAssertion != 0 {
@@ -199,8 +200,9 @@ public final class Recorder: @unchecked Sendable {
                 }
                 return
             }
-            if now - origin >= p.config.maxDuration {
-                Task { await self?.stop() }
+            if now - origin >= p.config.maxDuration, let self {
+                self.lock.withLock { self.autoStopped = true }
+                Task { await self.stop() }
             }
             if now - mic.lastBuffer > 5 {
                 p.fill(until: now)
@@ -229,6 +231,12 @@ public final class Recorder: @unchecked Sendable {
             lock.withLock { stopWaiters.append(cont) }
             source.run(p)
         }
+    }
+
+    /// Starts a simulated microphone instead of a real one: a beep at the start of every second, with
+    /// optional silent stretches (start, length). For tests and demos; returns at once.
+    public func startSimulated(duration: Double, gaps: [(Double, Double)] = [], realTime: Bool = true) {
+        startSynthetic(SyntheticSource(duration: duration, gaps: gaps, realTime: realTime))
     }
 
     /// Starts a simulated recording and returns immediately (for stop tests).

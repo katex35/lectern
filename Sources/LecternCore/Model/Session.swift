@@ -54,6 +54,8 @@ public struct RecordingInfo: Codable, Hashable, Identifiable, Sendable {
     public var problem: String?
     /// True while the recorder is still writing it.
     public var inProgress: Bool
+    /// Process id of the recorder helper while `inProgress`, to reattach after the app restarts.
+    public var recorderPID: Int32?
 
     public init(file: String, start: Date, duration: Double? = nil, device: String? = nil,
                 gaps: [RecordingGap] = [], deviceChanges: [DeviceChange] = [], problem: String? = nil,
