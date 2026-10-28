@@ -65,6 +65,18 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
             try? await center.add(UNNotificationRequest(identifier: id, content: content,
                                                         trigger: UNCalendarNotificationTrigger(dateMatching: fire, repeats: false)))
         }
+
+        // exams and deadlines: a day ahead, at the same time of day
+        for item in CourseDate.upcoming(in: model.courses, from: Date().addingTimeInterval(86_400), days: 7) {
+            let content = UNMutableNotificationContent()
+            content.title = item.course.shortName
+            content.body = L("reminder.dateBody", item.date.title)
+            content.sound = .default
+            let fire = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute],
+                                                       from: item.date.date.addingTimeInterval(-86_400))
+            try? await center.add(UNNotificationRequest(identifier: "lecture.date.\(item.date.id.uuidString)", content: content,
+                                                        trigger: UNCalendarNotificationTrigger(dateMatching: fire, repeats: false)))
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

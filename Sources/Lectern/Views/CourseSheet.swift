@@ -20,6 +20,7 @@ struct CourseDraft: Identifiable {
     var instructor = ""
     var colorHex: String?
     var slots: [Slot] = []
+    var dates: [CourseDate] = []
 
     init() {}
 
@@ -33,6 +34,7 @@ struct CourseDraft: Identifiable {
         slots = course.slots.map {
             Slot(weekday: $0.weekday, start: Self.date($0.start), end: Self.date($0.end), room: $0.room ?? "")
         }
+        dates = course.events
     }
 
     static func date(_ time: ClockTime) -> Date {
@@ -53,7 +55,8 @@ struct CourseDraft: Identifiable {
                                        room: $0.room.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0.room)
                       },
                       instructor: instructor.trimmingCharacters(in: .whitespaces).isEmpty ? nil : instructor,
-                      colorHex: colorHex)
+                      colorHex: colorHex,
+                      dates: dates.filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty })
     }
 }
 
@@ -126,6 +129,31 @@ struct CourseSheet: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.record)
                 }
+
+                Section(L("course.dates")) {
+                    ForEach($draft.dates) { $item in
+                        HStack(spacing: 8) {
+                            Picker(L("course.dateKind"), selection: $item.kind) {
+                                ForEach(CourseDate.Kind.allCases, id: \.self) { Text(kindName($0)).tag($0) }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                            .frame(width: 118, alignment: .leading)
+                            TextField(L("course.dateTitle"), text: $item.title, prompt: Text(L("course.dateTitle")))
+                                .labelsHidden()
+                            DatePicker(L("course.dateWhen"), selection: $item.date)
+                                .labelsHidden()
+                            IconButton(systemName: "minus.circle", label: L("course.removeDate"), size: 24) {
+                                draft.dates.removeAll { $0.id == item.id }
+                            }
+                        }
+                    }
+                    Button(L("course.addDate")) {
+                        let nextWeek = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+                        let morning = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: nextWeek) ?? nextWeek
+                        draft.dates.append(CourseDate(kind: .exam, title: "", date: morning))
+                    }
+                }
             }
             .formStyle(.grouped)
 
@@ -143,7 +171,7 @@ struct CourseSheet: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
-        .frame(width: 620, height: 580)
+        .frame(width: 640, height: 640)
     }
 
     private var colors: some View {
@@ -160,6 +188,14 @@ struct CourseSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(hex ?? L("course.color.auto"))
             }
+        }
+    }
+
+    private func kindName(_ kind: CourseDate.Kind) -> String {
+        switch kind {
+        case .exam: return L("course.kind.exam")
+        case .assignment: return L("course.kind.assignment")
+        case .other: return L("course.kind.other")
         }
     }
 

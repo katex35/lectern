@@ -63,16 +63,22 @@ public struct Course: Codable, Identifiable, Hashable, Sendable {
     public var slots: [ScheduleSlot]
     public var instructor: String?
     public var colorHex: String?
+    /// Exams and deadlines; absent in course files written before they existed.
+    public var dates: [CourseDate]?
 
     public init(id: String, name: String, language: String, slots: [ScheduleSlot] = [],
-                instructor: String? = nil, colorHex: String? = nil) {
+                instructor: String? = nil, colorHex: String? = nil, dates: [CourseDate] = []) {
         self.id = id
         self.name = name
         self.language = language
         self.slots = slots
         self.instructor = instructor
         self.colorHex = colorHex
+        self.dates = dates.isEmpty ? nil : dates
     }
+
+    /// The course's exams and deadlines, earliest first.
+    public var events: [CourseDate] { (dates ?? []).sorted { $0.date < $1.date } }
 
     /// A folder-safe version of a user-typed code.
     public static func sanitizedID(_ text: String) -> String {
@@ -105,6 +111,34 @@ extension ScheduleSlot {
 
     public func overlaps(_ other: ScheduleSlot) -> Bool {
         weekday == other.weekday && start < other.end && other.start < end
+    }
+}
+
+/// An exam, a deadline or another date that belongs to a course.
+public struct CourseDate: Codable, Hashable, Identifiable, Sendable {
+    public enum Kind: String, Codable, CaseIterable, Sendable {
+        case exam, assignment, other
+    }
+
+    public var id: UUID
+    public var kind: Kind
+    public var title: String
+    public var date: Date
+
+    public init(id: UUID = UUID(), kind: Kind, title: String, date: Date) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.date = date
+    }
+
+    /// Every course's dates from `start` up to `days` ahead, earliest first.
+    public static func upcoming(in courses: [Course], from start: Date, days: Int) -> [(course: Course, date: CourseDate)] {
+        let end = start.addingTimeInterval(TimeInterval(days) * 86_400)
+        return courses.flatMap { course in course.events.map { (course, $0) } }
+            .filter { $0.1.date >= start && $0.1.date <= end }
+            .sorted { $0.1.date < $1.1.date }
+            .map { (course: $0.0, date: $0.1) }
     }
 }
 

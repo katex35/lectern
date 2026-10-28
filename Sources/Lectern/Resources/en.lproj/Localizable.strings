@@ -150,3 +150,14 @@
 "session.tab.chat" = "Chat";
 "course.redrawCover" = "Draw the cover again";
 "covers.failed" = "The cover could not be drawn";
+"course.dates" = "Exams and deadlines";
+"course.dateKind" = "Kind";
+"course.dateTitle" = "Title";
+"course.dateWhen" = "Date";
+"course.addDate" = "Add a date";
+"course.removeDate" = "Remove this date";
+"course.kind.exam" = "Exam";
+"course.kind.assignment" = "Deadline";
+"course.kind.other" = "Other";
+"home.upcoming" = "Coming up";
+"reminder.dateBody" = "Tomorrow: %@";

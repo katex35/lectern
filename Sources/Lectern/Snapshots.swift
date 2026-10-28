@@ -22,7 +22,7 @@ enum Snapshots {
         await pause(1.6)
         save(window, to: folder.appendingPathComponent("1-home.png"))
 
-        if let course = model.courses.first(where: { !$0.slots.isEmpty }) {
+        if let course = model.courses.first(where: { !$0.events.isEmpty }) ?? model.courses.first(where: { !$0.slots.isEmpty }) {
             model.edit(course)
             await pause(1.5)
             if let sheet = window.attachedSheet { save(sheet, to: folder.appendingPathComponent("1b-course.png")) }

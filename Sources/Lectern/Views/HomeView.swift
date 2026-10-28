@@ -27,6 +27,17 @@ struct HomeView: View {
                     .enter(appeared, delay: 0.12)
                 }
 
+                let soon = Array(CourseDate.upcoming(in: model.courses, from: Date(), days: 45).prefix(3))
+                if !soon.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Caption(text: L("home.upcoming"))
+                        HStack(spacing: 8) {
+                            ForEach(soon, id: \.date.id) { item in UpcomingTile(course: item.course, date: item.date) }
+                        }
+                    }
+                    .enter(appeared, delay: 0.15)
+                }
+
                 if !ready.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Caption(text: L("home.ready"))
@@ -150,6 +161,44 @@ private struct NextCard: View {
         if current != nil { return L("home.onNow") }
         guard let next else { return L("home.addSchedule") }
         return "\(RelativeTime.dayAndTime(next.start)) · \(RelativeTime.until(next.start))"
+    }
+}
+
+/// An exam or deadline coming up; opens its course to change it.
+private struct UpcomingTile: View {
+    @Environment(AppModel.self) private var model
+    let course: Course
+    let date: CourseDate
+
+    var body: some View {
+        Button { model.edit(course) } label: {
+            HStack(spacing: 10) {
+                Capsule()
+                    .fill(Theme.color(of: course, among: model.courses))
+                    .frame(width: 3, height: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(date.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Text(verbatim: "\(course.shortName) · \(RelativeTime.dayAndTime(date.date))")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.tertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text(RelativeTime.until(date.date))
+                    .font(.system(size: 11.5, weight: date.kind == .exam ? .semibold : .regular))
+                    .foregroundStyle(date.kind == .exam ? Theme.ink : Theme.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(LiftButtonStyle())
     }
 }
 

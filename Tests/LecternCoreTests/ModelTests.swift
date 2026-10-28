@@ -56,6 +56,25 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(inTerm.map { $0.match.course.id }, ["ARASTIRMA"])
     }
 
+    func testCourseDatesAreOptionalInOldFilesAndListedInOrder() throws {
+        let old = #"{"id":"GORU","name":"Vision","language":"en","slots":[]}"#
+        let course = try JSONStore.decoder.decode(Course.self, from: Data(old.utf8))
+        XCTAssertNil(course.dates)
+        XCTAssertEqual(course.events, [])
+
+        let midterm = CourseDate(kind: .exam, title: "Vize", date: date(2026, 11, 13, 10))
+        let homework = CourseDate(kind: .assignment, title: "Ödev 2", date: date(2026, 11, 3, 23, 59))
+        let final = CourseDate(kind: .exam, title: "Final", date: date(2027, 1, 10, 10))
+        let dated = Course(id: "GORU", name: "Vision", language: "en", dates: [midterm, homework, final])
+        XCTAssertEqual(dated.events.map(\.title), ["Ödev 2", "Vize", "Final"])
+        let soon = CourseDate.upcoming(in: [dated, research], from: date(2026, 11, 1), days: 30)
+        XCTAssertEqual(soon.map(\.date.title), ["Ödev 2", "Vize"])
+        // round trip keeps them
+        let back = try JSONStore.decoder.decode(Course.self, from: JSONStore.encoder.encode(dated))
+        XCTAssertEqual(back.events, dated.events)
+        XCTAssertNil(Course(id: "X", name: "x", language: "tr").dates)
+    }
+
     func testNewCourseIDs() {
         XCTAssertEqual(Course.newID(code: "cse 5217", name: "Vision", taken: []), "CSE-5217")
         XCTAssertEqual(Course.newID(code: "", name: "Veri Bilimi", taken: []), "VERI-BILIMI")

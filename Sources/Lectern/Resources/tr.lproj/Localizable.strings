@@ -150,3 +150,14 @@
 "session.tab.chat" = "Sohbet";
 "course.redrawCover" = "Kapağı yeniden çiz";
 "covers.failed" = "Kapak çizilemedi";
+"course.dates" = "Sınavlar ve teslimler";
+"course.dateKind" = "Tür";
+"course.dateTitle" = "Başlık";
+"course.dateWhen" = "Tarih";
+"course.addDate" = "Tarih ekle";
+"course.removeDate" = "Bu tarihi kaldır";
+"course.kind.exam" = "Sınav";
+"course.kind.assignment" = "Teslim";
+"course.kind.other" = "Diğer";
+"home.upcoming" = "Yaklaşanlar";
+"reminder.dateBody" = "Yarın: %@";
