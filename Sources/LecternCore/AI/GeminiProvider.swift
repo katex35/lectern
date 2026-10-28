@@ -175,10 +175,23 @@ public struct GeminiProvider: LanguageModelProvider {
         switch HTTPErrors.code(body) {
         case "UNAUTHENTICATED": return .unauthorized(message)
         case "PERMISSION_DENIED": return .forbidden(message)
-        case "RESOURCE_EXHAUSTED": return .rateLimited(retryAfter: retryAfter, message)
+        case "RESOURCE_EXHAUSTED":
+            // a daily quota does not come back by retrying; a per-minute one says when to retry
+            let text = String(decoding: body, as: UTF8.self)
+            if text.contains("PerDay") { return .usageLimit(message) }
+            return .rateLimited(retryAfter: retryAfter ?? retryDelay(body), message)
         case "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED": return .unavailable(message)
         case "INVALID_ARGUMENT", "FAILED_PRECONDITION", "NOT_FOUND", "OUT_OF_RANGE": return .invalidRequest(message)
         default: return status.map { HTTPErrors.byStatus($0, message, retryAfter: retryAfter) } ?? .unavailable(message)
         }
+    }
+
+    /// Seconds from a `google.rpc.RetryInfo` detail (`"retryDelay": "37s"`).
+    static func retryDelay(_ body: Data) -> Double? {
+        let details = (HTTPErrors.object(body)?["error"] as? [String: Any])?["details"] as? [[String: Any]] ?? []
+        for detail in details where (detail["@type"] as? String)?.hasSuffix("google.rpc.RetryInfo") == true {
+            if let delay = detail["retryDelay"] as? String, delay.hasSuffix("s") { return Double(delay.dropLast()) }
+        }
+        return nil
     }
 }

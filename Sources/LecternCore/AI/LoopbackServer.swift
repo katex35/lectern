@@ -2,9 +2,11 @@ import Foundation
 import Network
 
 /// A one-shot HTTP listener on the loopback interface that receives the browser's redirect after
-/// sign-in. Only `GET <path>` counts; anything else gets a 404 and the wait goes on.
+/// sign-in. Only `GET <path>` with this attempt's `state` counts: other paths get a 404, another
+/// state (an old tab, another program) a 400, and the wait goes on.
 final class LoopbackServer: @unchecked Sendable {
     let path: String
+    let state: String
     let page: String
     private(set) var port: UInt16 = 0
     private let listener: NWListener
@@ -13,31 +15,34 @@ final class LoopbackServer: @unchecked Sendable {
     private var waiter: CheckedContinuation<[String: String], Error>?
     private var outcome: Result<[String: String], Error>?
 
-    private init(listener: NWListener, path: String, page: String) {
+    private init(listener: NWListener, path: String, state: String, page: String) {
         self.listener = listener
         self.path = path
+        self.state = state
         self.page = page
     }
 
     /// Starts listening on a free port of 127.0.0.1.
-    static func start(path: String, page: String) async throws -> LoopbackServer {
+    static func start(path: String, state: String, page: String) async throws -> LoopbackServer {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
         parameters.requiredInterfaceType = .loopback
         let listener = try NWListener(using: parameters)
-        let server = LoopbackServer(listener: listener, path: path, page: page)
+        let server = LoopbackServer(listener: listener, path: path, state: state, page: page)
         listener.newConnectionHandler = { [weak server] connection in server?.accept(connection) }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             // state updates arrive one at a time on the server's queue
             let started = Flag()
-            listener.stateUpdateHandler = { state in
+            listener.stateUpdateHandler = { [weak listener] state in
                 guard !started.isSet else { return }
                 switch state {
                 case .ready:
                     started.isSet = true
                     continuation.resume()
-                case .failed(let error):
+                case .failed(let error), .waiting(let error):
+                    // waiting would never end on its own for a loopback port
                     started.isSet = true
+                    listener?.cancel()
                     continuation.resume(throwing: error)
                 case .cancelled:
                     started.isSet = true
@@ -124,6 +129,10 @@ final class LoopbackServer: @unchecked Sendable {
         }
         var query: [String: String] = [:]
         for item in components.queryItems ?? [] { query[item.name] = item.value ?? "" }
+        guard query["state"] == state else {
+            send(connection, status: "400 Bad Request", body: "")
+            return
+        }
         send(connection, status: "200 OK", body: page)
         finish(.success(query))
     }

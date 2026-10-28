@@ -192,11 +192,12 @@ final class ChatGPTAuthTests: XCTestCase {
     func testSignInRejectsAForeignStateAndADeclinedConsent() async throws {
         let session = MockHTTP.session { [self] recorded in try metadataReply(recorded) ?? .json("{}", status: 500) }
         let auth = ChatGPTAuth(appName: "Lectern", hostID: "h", endpoints: Self.endpoints, session: session)
+        // a stray callback with another state is turned away and the wait goes on
         do {
-            _ = try await auth.signIn(timeout: 20) { Browser { _ in ["code": "c", "state": "forged", "client_id": "oaiapp_x"] }.open($0) }
-            XCTFail("expected a state mismatch")
+            _ = try await auth.signIn(timeout: 3) { Browser { _ in ["code": "c", "state": "forged", "client_id": "oaiapp_x"] }.open($0) }
+            XCTFail("a forged state must not end the sign-in")
         } catch {
-            XCTAssertEqual(error as? ChatGPTAuthError, .stateMismatch)
+            XCTAssertEqual(error as? ChatGPTAuthError, .timedOut)
         }
         do {
             _ = try await auth.signIn(timeout: 20) { Browser { ["error": "access_denied", "state": $0["state"]!] }.open($0) }
@@ -307,6 +308,97 @@ final class ChatGPTAuthTests: XCTestCase {
         XCTAssertTrue(saved.all.isEmpty)
         let after = await chatGPT.account
         XCTAssertEqual(after.tokens?.refreshToken, "refresh-1")
+    }
+
+    func testNonTerminalRejectionKeepsTheTokens() async throws {
+        // a proxy's login page or an unknown code is no reason to forget the sign-in
+        let replies = [MockHTTP.Reply(status: 401, headers: ["Content-Type": "text/html"], chunks: [Data("<html>Log in</html>".utf8)]),
+                       MockHTTP.Reply.json(#"{"error":"unauthorized_client"}"#, status: 401)]
+        for reply in replies {
+            let session = MockHTTP.session { _ in reply }
+            let saved = Saved()
+            let auth = ChatGPTAuth(appName: "Lectern", hostID: "h", endpoints: Self.endpoints, session: session)
+            let chatGPT = ChatGPTSession(account: account(expiresIn: 10), auth: auth) { saved.add($0) }
+            do {
+                _ = try await chatGPT.accessToken()
+                XCTFail("expected an error")
+            } catch {
+                if case .unauthorized = error as? ProviderError { XCTFail("must not end the sign-in: \(error)") }
+            }
+            XCTAssertTrue(saved.all.isEmpty)
+            let after = await chatGPT.account
+            XCTAssertEqual(after.tokens?.refreshToken, "refresh-1")
+        }
+    }
+
+    /// Holds the token endpoint's answer until the test lets it go.
+    final class Gate: @unchecked Sendable {
+        let semaphore = DispatchSemaphore(value: 0)
+        func wait() { _ = semaphore.wait(timeout: .now() + 10) }
+        func open() { semaphore.signal() }
+    }
+
+    func waitForTokenRequest() async throws {
+        for _ in 0..<100 where !MockHTTP.requests.contains(where: { $0.request.url?.path == "/api/accounts/oauth/token" }) {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    func testSignOutDuringARefreshRevokesTheRenewedToken() async throws {
+        let gate = Gate()
+        let session = MockHTTP.session { [self] recorded in
+            if let reply = try metadataReply(recorded) { return reply }
+            if recorded.request.url?.path == "/revoke" { return .json("") }
+            gate.wait()
+            return .json(tokenJSON(access: "access-new", refresh: "refresh-2", idToken: nil))
+        }
+        let saved = Saved()
+        let auth = ChatGPTAuth(appName: "Lectern", hostID: "h", endpoints: Self.endpoints, session: session)
+        let chatGPT = ChatGPTSession(account: account(expiresIn: 10), auth: auth) { saved.add($0) }
+        let renewing = Task { try await chatGPT.accessToken() }
+        try await waitForTokenRequest()
+        let signingOut = Task { await chatGPT.signOut() }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        // nothing may start a new renewal while signing out
+        do {
+            _ = try await chatGPT.refresh(force: true)
+            XCTFail("expected notConnected")
+        } catch {
+            XCTAssertEqual(error as? ProviderError, .notConnected)
+        }
+        gate.open()
+        _ = try? await renewing.value
+        let confirmed = await signingOut.value
+        XCTAssertTrue(confirmed)
+
+        let revoke = try XCTUnwrap(MockHTTP.requests.first { $0.request.url?.path == "/revoke" })
+        XCTAssertEqual(revoke.form["token"], "refresh-2")
+        let after = await chatGPT.account
+        XCTAssertNil(after.tokens)
+        XCTAssertNil(saved.all.last?.tokens)
+        XCTAssertEqual(MockHTTP.requests.filter { $0.request.url?.path == "/api/accounts/oauth/token" }.count, 1)
+    }
+
+    func testNewSignInDuringAFailingRefreshIsKept() async throws {
+        let gate = Gate()
+        let session = MockHTTP.session { _ in
+            gate.wait()
+            return .json(#"{"error":"refresh_token_reused"}"#, status: 400)
+        }
+        let saved = Saved()
+        let auth = ChatGPTAuth(appName: "Lectern", hostID: "h", endpoints: Self.endpoints, session: session)
+        let chatGPT = ChatGPTSession(account: account(expiresIn: 10), auth: auth) { saved.add($0) }
+        let renewing = Task { try await chatGPT.accessToken() }
+        try await waitForTokenRequest()
+        var fresh = account(expiresIn: 3000, refresh: "refresh-new")
+        fresh.tokens?.accessToken = "access-fresh"
+        await chatGPT.replace(with: fresh)
+        gate.open()
+        let token = try await renewing.value
+        XCTAssertEqual(token, "access-fresh")
+        let after = await chatGPT.account
+        XCTAssertEqual(after.tokens?.refreshToken, "refresh-new")
+        XCTAssertEqual(saved.all.last?.tokens?.refreshToken, "refresh-new")
     }
 
     func testPlanAnswersRetryOnceWithARefreshedToken() async throws {

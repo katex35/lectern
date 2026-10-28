@@ -120,10 +120,10 @@ public struct ChatGPTAuth: Sendable {
     public func signIn(previous: ChatGPTAccount? = nil, timeout: TimeInterval = 300,
                        page: String = "<!doctype html><meta charset=utf-8><title>Lectern</title><p>You can close this tab.</p>",
                        open: @Sendable (URL) -> Void) async throws -> ChatGPTAccount {
-        let server = try await LoopbackServer.start(path: Self.callbackPath, page: page)
+        let state = Self.randomToken()
+        let server = try await LoopbackServer.start(path: Self.callbackPath, state: state, page: page)
         defer { server.stop() }
         let redirect = "http://127.0.0.1:\(server.port)\(Self.callbackPath)"
-        let state = Self.randomToken()
         let nonce = Self.randomToken()
         let verifier = Self.randomToken()
         open(authorizeURL(previous: previous, redirect: redirect, state: state, nonce: nonce,
@@ -262,14 +262,18 @@ public struct ChatGPTAuth: Sendable {
                                                      "refresh_token_expired", "refresh_token_invalidated",
                                                      "refresh_token_reused"]
 
-    /// Terminal refresh errors become `.unauthorized` (sign in again); network and server trouble
-    /// stays temporary so the saved sign-in is never thrown away for it.
+    /// Only the terminal refresh errors become `.unauthorized`, which ends the sign-in. Any other
+    /// rejection (a proxy's 401 page, an unknown code) keeps the saved sign-in, and network and
+    /// server trouble stays temporary.
     static let oauthError: ErrorMapper = { status, body, response in
         let code = HTTPErrors.code(body)
         let message = HTTPErrors.message(body)
         if let code, terminalRefreshErrors.contains(code) { return .unauthorized(message) }
         if code == "invalid_client" { return .forbidden(message) }
-        return HTTPErrors.byStatus(status, message, retryAfter: HTTPErrors.retryAfter(response))
+        switch HTTPErrors.byStatus(status, message, retryAfter: HTTPErrors.retryAfter(response)) {
+        case .unauthorized, .forbidden: return .invalidRequest(message)
+        case let other: return other
+        }
     }
 
     // MARK: - ID token
@@ -356,6 +360,7 @@ actor OpenIDMetadata {
     private var cachedDocument: Document?
     private var keys: [String: SecKey] = [:]
     private var anonymousKey: SecKey?
+    private var lastFetch: Date?
 
     init(discovery: URL, http: HTTPClient) {
         self.discovery = discovery
@@ -369,14 +374,18 @@ actor OpenIDMetadata {
         return document
     }
 
-    /// The RSA key with this id; an unknown id refetches the set once, since keys rotate.
+    /// The RSA key with this id. Keys rotate, so an unknown id fetches the set again, at most once a minute.
     func key(id: String?) async throws -> SecKey {
         if let id, let key = keys[id] { return key }
         if id == nil, let anonymousKey { return anonymousKey }
+        if let lastFetch, Date().timeIntervalSince(lastFetch) < 60 {
+            throw ChatGPTAuthError.invalidIDToken("unknown signing key")
+        }
         guard let url = URL(string: try await document().jwks_uri) else {
             throw ChatGPTAuthError.invalidIDToken("no key set")
         }
         let set = try await http.json(KeySet.self, URLRequest(url: url), errors: ChatGPTAuth.oauthError)
+        lastFetch = Date()
         for key in set.keys where key.kty == "RSA" {
             guard let n = key.n.flatMap(Base64URL.decode), let e = key.e.flatMap(Base64URL.decode),
                   let secKey = RSAPublicKey.make(modulus: n, exponent: e) else { continue }
@@ -435,7 +444,7 @@ public actor ChatGPTSession {
     }
 
     public func accessToken() async throws -> String {
-        guard let tokens = account.tokens else { throw ProviderError.notConnected }
+        guard !signingOut, let tokens = account.tokens else { throw ProviderError.notConnected }
         guard account.canUsePlan else {
             throw ProviderError.forbidden("Using the ChatGPT plan was not allowed at sign-in")
         }
@@ -447,6 +456,7 @@ public actor ChatGPTSession {
     /// token still works; `force` is for a token the server just rejected.
     @discardableResult
     public func refresh(force: Bool = false) async throws -> ChatGPTTokens {
+        guard !signingOut else { throw ProviderError.notConnected }
         if let refreshing { return try await refreshing.value }
         guard let tokens = account.tokens else { throw ProviderError.notConnected }
         if !force, let earliest = tokens.earliestRefreshAt, earliest > Date(), tokens.expiresAt > Date() {
@@ -455,15 +465,28 @@ public actor ChatGPTSession {
         let task = Task { [auth, account] in try await auth.refresh(account) }
         refreshing = task
         defer { refreshing = nil }
+        // the actor can sign out or take a new sign-in while this waits: a result only applies to
+        // the token set it renewed
+        let renewing = tokens.refreshToken
         do {
             let renewed = try await task.value
+            guard account.tokens?.refreshToken == renewing else {
+                // replaced meanwhile by a new sign-in (use it) or by a sign-out
+                if !signingOut, let current = account.tokens { return current }
+                throw ProviderError.notConnected
+            }
             account.tokens = renewed
             save(account)
             return renewed
         } catch ProviderError.unauthorized(let message) {
             // the refresh token is gone for good: keep the registration for the next sign-in
-            account.tokens = nil
-            save(account)
+            if account.tokens?.refreshToken == renewing {
+                account.tokens = nil
+                save(account)
+            } else if !signingOut, let current = account.tokens {
+                // a new sign-in arrived while the old token failed
+                return current
+            }
             throw ProviderError.unauthorized(message)
         }
     }
@@ -477,9 +500,29 @@ public actor ChatGPTSession {
     /// Revokes the sign-in and forgets the tokens. Returns false when OpenAI could not confirm the
     /// revocation; the tokens are cleared here either way.
     public func signOut() async -> Bool {
-        let confirmed = await auth.revoke(account)
+        signingOut = true
+        defer { signingOut = false }
+        let before = account.tokens
+        // a renewal in flight rotates the refresh token: take its result straight from the task, since
+        // the renewal itself may not have stored it yet when this resumes
+        var live: [ChatGPTTokens] = []
+        if let refreshing, let renewed = try? await refreshing.value { live.append(renewed) }
+        // the current set, unless it is the one that renewal just replaced
+        if let current = account.tokens, !live.contains(where: { $0.refreshToken == current.refreshToken }),
+           live.isEmpty || current.refreshToken != before?.refreshToken {
+            live.append(current)
+        }
+        let registration = account
         account.tokens = nil
         save(account)
+        var confirmed = true
+        for tokens in live {
+            var revoking = registration
+            revoking.tokens = tokens
+            if !(await auth.revoke(revoking)) { confirmed = false }
+        }
         return confirmed
     }
+
+    private var signingOut = false
 }

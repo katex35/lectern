@@ -342,6 +342,22 @@ final class ProviderTests: XCTestCase {
         let quota = #"[{"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}}]"#
         provider = GeminiProvider(apiKey: "k", session: MockHTTP.session { _ in .json(quota, status: 429) })
         await expectError({ $0 == .rateLimited(retryAfter: nil, "Quota exceeded") }) { _ = try await provider.complete(self.request) }
+
+        let perMinute = #"""
+        {"error":{"code":429,"message":"Slow down","status":"RESOURCE_EXHAUSTED","details":[
+          {"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel"}]},
+          {"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"37s"}]}}
+        """#
+        provider = GeminiProvider(apiKey: "k", session: MockHTTP.session { _ in .json(perMinute, status: 429) })
+        await expectError({ $0 == .rateLimited(retryAfter: 37, "Slow down") }) { _ = try await provider.complete(self.request) }
+
+        // the free daily quota is not worth retrying
+        let perDay = #"""
+        {"error":{"code":429,"message":"Daily quota used","status":"RESOURCE_EXHAUSTED","details":[
+          {"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}
+        """#
+        provider = GeminiProvider(apiKey: "k", session: MockHTTP.session { _ in .json(perDay, status: 429) })
+        await expectError({ $0 == .usageLimit("Daily quota used") }) { _ = try await provider.complete(self.request) }
     }
 
     func testGeminiModelsKeepTextGenerators() async throws {
