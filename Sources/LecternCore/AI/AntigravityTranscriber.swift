@@ -101,8 +101,10 @@ public struct AntigravityTranscriber: Transcribing {
             throw ProviderError.refused("The transcript was blocked (\(reason))")
         }
         let text = (candidate.content?.parts ?? []).compactMap(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty, candidate.finishReason != "STOP" {
-            throw ProviderError.incomplete("The transcript came back empty (\(candidate.finishReason ?? "no reason"))")
+        // a piece with nothing said in it comes back finished and empty; anything that did not finish
+        // (cut at the output limit, no reason given) is tried again rather than kept short
+        guard candidate.finishReason == "STOP" else {
+            throw ProviderError.incomplete("The transcript did not finish (\(candidate.finishReason ?? "no reason"))")
         }
         return text
     }

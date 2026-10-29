@@ -225,6 +225,32 @@ final class AntigravityAuthTests: XCTestCase {
         XCTAssertNotEqual(AntigravityTranscriber.sessionID(for: "a"), AntigravityTranscriber.sessionID(for: "b"))
     }
 
+    func testATranscriptCutShortIsNotKept() async throws {
+        let audio = FileManager.default.temporaryDirectory.appendingPathComponent("piece-\(UUID().uuidString).m4a")
+        try Data([0]).write(to: audio)
+        defer { try? FileManager.default.removeItem(at: audio) }
+        for reply in [#"{"response":{"candidates":[{"content":{"parts":[{"text":"half"}]},"finishReason":"MAX_TOKENS"}]}}"#,
+                      #"{"response":{"candidates":[{"content":{"parts":[{"text":"half"}]}}]}}"#] {
+            let session = MockHTTP.session { _ in .json(reply) }
+            let antigravity = AntigravitySession(account: account(expiresIn: 3600), auth: auth(session)) { _ in }
+            let transcriber = AntigravityTranscriber(session: antigravity, baseURL: Self.endpoints.api, urlSession: session,
+                                                     version: AntigravityVersion(session: session))
+            do {
+                _ = try await transcriber.transcribe(audio, languages: [], vocabulary: [])
+                XCTFail("a cut transcript must not pass")
+            } catch let error as ProviderError {
+                if case .incomplete = error {} else { XCTFail("got \(error)") }
+            }
+        }
+        // silence: finished and empty
+        let session = MockHTTP.session { _ in .json(#"{"response":{"candidates":[{"content":{"role":"model"},"finishReason":"STOP"}]}}"#) }
+        let antigravity = AntigravitySession(account: account(expiresIn: 3600), auth: auth(session)) { _ in }
+        let transcriber = AntigravityTranscriber(session: antigravity, baseURL: Self.endpoints.api, urlSession: session,
+                                                 version: AntigravityVersion(session: session))
+        let empty = try await transcriber.transcribe(audio, languages: [], vocabulary: [])
+        XCTAssertEqual(empty, "")
+    }
+
     func testTheTranscriberRenewsOnceWhenCloudCodeRejectsTheToken() async throws {
         let audio = FileManager.default.temporaryDirectory.appendingPathComponent("piece-\(UUID().uuidString).m4a")
         try Data([0]).write(to: audio)

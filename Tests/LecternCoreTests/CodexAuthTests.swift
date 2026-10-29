@@ -212,6 +212,29 @@ final class CodexAuthTests: XCTestCase {
         XCTAssertEqual(stored.accountID, "acct-1")
     }
 
+    func testASignOutDuringARenewalLeavesNothingForAnyWaiter() async throws {
+        let session = MockHTTP.session { [self] _ in
+            Thread.sleep(forTimeInterval: 0.4)
+            return .json(tokenJSON(access: "access-new", refresh: "refresh-2", idToken: nil))
+        }
+        let saved = Saved()
+        let codex = CodexSession(account: account(expiresIn: 10), auth: CodexAuth(endpoints: Self.endpoints, session: session)) { saved.add($0) }
+        let first = Task { try await codex.accessToken() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let second = Task { try await codex.accessToken() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await codex.signOut()
+        for waiter in [first, second] {
+            switch await waiter.result {
+            case .success(let token): XCTFail("a signed-out session handed out \(token)")
+            case .failure(let error): XCTAssertEqual(error as? ProviderError, .notConnected)
+            }
+        }
+        // the renewed tokens were never written back
+        XCTAssertEqual(saved.all.count, 1)
+        XCTAssertNil(saved.all.last ?? nil)
+    }
+
     final class Counter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

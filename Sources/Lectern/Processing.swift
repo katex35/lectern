@@ -85,6 +85,20 @@ enum Providers {
         return session
     }
 
+    /// Ends the ChatGPT sign-in: the live session first, so a renewal in flight cannot write the
+    /// account back, then the keychain.
+    static func signOutCodex() async throws {
+        if let codex { await codex.session.signOut() }
+        codex = nil
+        try credentials.setCodexAccount(nil)
+    }
+
+    static func signOutAntigravity() async throws {
+        if let antigravity { await antigravity.session.signOut() }
+        antigravity = nil
+        try credentials.setAntigravityAccount(nil)
+    }
+
     static func antigravitySession(_ account: AntigravityAccount) -> AntigravitySession {
         if let antigravity, antigravity.email == account.email { return antigravity.session }
         let store = credentials

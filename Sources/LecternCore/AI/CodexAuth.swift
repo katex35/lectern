@@ -262,16 +262,23 @@ public actor CodexSession {
 
     public func accountID() -> String? { account?.accountID }
 
+    /// Renews the tokens once for every caller waiting at the same time; the renewal and the storing
+    /// of its result are one task, so a joining caller sees the stored result, or nothing after a sign-out.
     @discardableResult
     public func refresh() async throws -> CodexAccount {
         if let refreshing { return try await refreshing.value }
         guard let account else { throw ProviderError.notConnected }
-        let task = Task { [auth] in try await auth.refresh(account) }
+        let task = Task { try await self.renew(account) }
         refreshing = task
         defer { refreshing = nil }
+        return try await task.value
+    }
+
+    private func renew(_ account: CodexAccount) async throws -> CodexAccount {
+        // the actor can sign out meanwhile: a result only applies to the token set it renewed
         let renewing = account.refreshToken
         do {
-            let renewed = try await task.value
+            let renewed = try await auth.refresh(account)
             guard self.account?.refreshToken == renewing else {
                 if let current = self.account { return current }
                 throw ProviderError.notConnected

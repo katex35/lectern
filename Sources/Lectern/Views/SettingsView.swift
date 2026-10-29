@@ -274,7 +274,12 @@ private struct ChatGPTRow: View {
     private func signOut() async {
         working = true
         defer { working = false }
-        try? credentials.setCodexAccount(nil)
+        do {
+            try await Providers.signOutCodex()
+        } catch {
+            message = error.localizedDescription
+            return
+        }
         codex = nil
         if let legacy, legacy.tokens != nil {
             let store = credentials
@@ -308,7 +313,7 @@ private struct GoogleRow: View {
             Spacer()
             if working { ProgressView().controlSize(.small) }
             if account != nil {
-                Button(L("settings.signOut")) { signOut() }.disabled(working)
+                Button(L("settings.signOut")) { Task { await signOut() } }.disabled(working)
             } else {
                 Button(L("settings.google.signIn")) { Task { await signIn() } }
                     .buttonStyle(.borderedProminent)
@@ -341,8 +346,13 @@ private struct GoogleRow: View {
         }
     }
 
-    private func signOut() {
-        try? credentials.setAntigravityAccount(nil)
+    private func signOut() async {
+        do {
+            try await Providers.signOutAntigravity()
+        } catch {
+            message = error.localizedDescription
+            return
+        }
         account = nil
         message = nil
         model.refreshAccounts()
