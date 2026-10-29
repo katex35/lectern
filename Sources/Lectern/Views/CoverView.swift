@@ -76,6 +76,16 @@ enum Covers {
 
     private static var drawing: Set<URL> = []
 
+    /// Covers for the courses that have none yet (imported ones, or made while no account could
+    /// draw), one after another so the account is not hit all at once.
+    static func drawMissing(model: AppModel) async {
+        for course in model.courses
+        where !FileManager.default.fileExists(atPath: model.library.root.appendingPathComponent("Covers/\(course.id).jpg").path) {
+            guard maker() != nil else { return }
+            await draw(for: course, model: model)
+        }
+    }
+
     /// A cover for a course from its name, unless it has one.
     static func draw(for course: Course, model: AppModel, replacing: Bool = false) async {
         await draw(topic: course.name, course: course,

@@ -95,6 +95,8 @@ final class AppModel {
         if library.completeDurations(sessions) > 0 { reload() }
         refreshAccounts()
         Reminders.shared.start(self)
+        // courses that came in without a cover get one now that an account may draw it
+        Task { await Covers.drawMissing(model: self) }
     }
 
     func refreshAccounts() {
