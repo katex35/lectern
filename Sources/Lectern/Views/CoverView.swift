@@ -107,7 +107,8 @@ enum Covers {
             cache[url] = nil
             model.reload()
         } catch {
-            model.show(L("covers.failed"))
+            // the reason stays visible: a plan without image generation, a model name, a limit
+            model.show("\(L("covers.failed")): \(error.localizedDescription)")
         }
     }
 }

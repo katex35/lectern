@@ -12,18 +12,21 @@ public protocol ImageMaker: Sendable {
 /// `image_generation_call` output item.
 public struct CodexImageMaker: ImageMaker {
     public static let defaultModel = "gpt-image-2.5-flare"
-    /// The text model that calls the tool.
-    static let mainModel = "gpt-5.4-mini"
+    /// The text model that calls the tool; it has to be one the backend serves to ChatGPT accounts
+    /// (the backend refuses `gpt-5.4-mini` there), so the small listed model is used.
+    public static let defaultMainModel = "gpt-5.6-luna"
 
     let session: CodexSession
     let model: String
+    let mainModel: String
     let baseURL: URL
     let http: HTTPClient
 
-    public init(session: CodexSession, model: String = CodexImageMaker.defaultModel,
+    public init(session: CodexSession, model: String = CodexImageMaker.defaultModel, mainModel: String = CodexImageMaker.defaultMainModel,
                 baseURL: URL = CodexAuth.backend, urlSession: URLSession = .shared) {
         self.session = session
         self.model = model
+        self.mainModel = mainModel
         self.baseURL = baseURL
         self.http = HTTPClient(session: urlSession)
     }
@@ -65,7 +68,7 @@ public struct CodexImageMaker: ImageMaker {
         var reasoning = Reasoning()
         var parallel_tool_calls = true
         var include = ["reasoning.encrypted_content"]
-        var model = CodexImageMaker.mainModel
+        var model: String
         var store = false
         var tool_choice = ToolChoice()
         var tools: [Tool]
@@ -93,7 +96,7 @@ public struct CodexImageMaker: ImageMaker {
     }
 
     public func image(prompt: String) async throws -> Data {
-        let body = Body(tools: [Body.Tool(model: model)], input: [Body.Message(content: [Body.Message.Part(text: prompt)])])
+        let body = Body(model: mainModel, tools: [Body.Tool(model: model)], input: [Body.Message(content: [Body.Message.Part(text: prompt)])])
         do {
             return try await send(body, freshToken: false)
         } catch ProviderError.unauthorized {

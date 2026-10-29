@@ -57,7 +57,7 @@ final class ImageMakerTests: XCTestCase {
         XCTAssertEqual(sent.header("Authorization"), "Bearer access-1")
         XCTAssertEqual(sent.header("Chatgpt-Account-Id"), "acct-1")
         XCTAssertEqual(sent.header("Originator"), "codex-tui")
-        XCTAssertEqual(sent.json["model"] as? String, "gpt-5.4-mini")
+        XCTAssertEqual(sent.json["model"] as? String, "gpt-5.6-luna")
         XCTAssertEqual(sent.json["instructions"] as? String, "")
         XCTAssertEqual(sent.json["store"] as? Bool, false)
         XCTAssertEqual(sent.json["stream"] as? Bool, true)
