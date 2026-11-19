@@ -36,6 +36,11 @@ public enum RecordingTracks {
 
     /// What the Mac played while `file` was recorded, waiting to be mixed in.
     public static func system(for file: URL) -> URL { hidden(file, "system") }
+    /// The last minutes of what the Mac plays, while `file` is being recorded: read by the live helper.
+    public static func live(for file: URL) -> URL {
+        file.deletingLastPathComponent().appendingPathComponent("." + file.deletingPathExtension().lastPathComponent + ".live.pcm")
+    }
+
     /// The same after it was mixed in, kept for a while.
     public static func computer(for file: URL) -> URL { hidden(file, "computer") }
     /// The microphone alone, kept for a while after the computer's audio was mixed into `file`.

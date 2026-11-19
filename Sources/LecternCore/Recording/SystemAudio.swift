@@ -235,13 +235,16 @@ public final class SystemAudioRecorder: @unchecked Sendable {
     private var heard = false
     private var lastProblem: String?
 
-    public init(output: URL, configuration: RecorderConfiguration = .init(), realTime: Bool = true) {
+    /// `live`: where the last minutes of the track are also kept while it is recorded (see `LiveAudioRing`).
+    public init(output: URL, configuration: RecorderConfiguration = .init(), realTime: Bool = true, live: URL? = nil) {
         self.output = output
         var config = configuration
         // The tap is silent between sounds, and its buffers carry exact times: a stretch without input
         // is filled to the sample, so what is played lands where it was heard next to the microphone.
         config.gapThreshold = 0.05
         pipeline = AudioPipeline(output: output, config: config, realTime: realTime)
+        pipeline.liveURL = live
+        if let live { try? FileManager.default.removeItem(at: live) }
         pipeline.onLevel = { [weak self] _, peak in
             // about ten times a second; -50 dBFS is well above an idle output
             guard let self, peak > -50 else { return }

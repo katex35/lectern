@@ -141,7 +141,7 @@ public final class RecorderClient: @unchecked Sendable {
     /// With `systemAudio` what the Mac plays is recorded too and mixed in when the recording stops.
     public func start(deviceID: String? = nil, maxDuration: Double? = nil, simulate: Double? = nil,
                       gaps: [(Double, Double)] = [], systemAudio: Bool = false,
-                      watchdog: Double? = nil) async throws -> Date {
+                      watchdog: Double? = nil, live: Bool = false) async throws -> Date {
         guard let helper else { throw RecorderError.failed("attached client cannot start") }
         let p = Process()
         p.executableURL = helper
@@ -151,6 +151,7 @@ public final class RecorderClient: @unchecked Sendable {
         if let simulate { arguments += ["--simulate", String(simulate)] }
         for g in gaps { arguments += ["--gap", "\(g.0):\(g.1)"] }
         if systemAudio { arguments.append("--system-audio") }
+        if systemAudio, live { arguments.append("--live") }
         if let watchdog {
             arguments += ["--watchdog", String(watchdog)]
             watched = true

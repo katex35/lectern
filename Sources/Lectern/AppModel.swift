@@ -55,6 +55,7 @@ final class AppModel {
     let processing = ProcessingCenter()
     let chat = ChatCenter()
     let meetings = MeetingWatcher()
+    let helper = MeetingHelperCenter()
     private(set) var courses: [Course] = []
     /// Every lecture and meeting, newest first.
     private(set) var sessions: [Session] = []
@@ -103,6 +104,7 @@ final class AppModel {
         Reminders.shared.start(self)
         // a recorder that outlived the last run is taken over; what a crash left behind (recordings
         // never closed, computer audio not mixed in yet) is finished
+        helper.start(self)
         let adopted = recorder.adoptRunningRecording()
         meetings.start(self, adopted: adopted)
         MeetingControl.listen(self)
@@ -414,6 +416,8 @@ final class RecordingController {
                 client.heartbeat()
                 startTicking()
                 phase = .recording
+                let ring = RecordingTracks.live(for: client.output)
+                if FileManager.default.fileExists(atPath: ring.path) { model.helper.attach(ring: ring, session: session) }
                 return recording.automatic
             }
         }
@@ -492,7 +496,8 @@ final class RecordingController {
             let started = try await client.start(
                 deviceID: isMeeting && simulate == nil ? AVCaptureDevice.default(for: .audio)?.uniqueID : nil,
                 maxDuration: isMeeting ? MeetingSettings.maxDuration : nil, simulate: simulate,
-                systemAudio: withSystemAudio, watchdog: meeting?.automatic != nil ? MeetingSettings.watchdog : nil)
+                systemAudio: withSystemAudio, watchdog: meeting?.automatic != nil ? MeetingSettings.watchdog : nil,
+                live: withSystemAudio)
             startedClient = client
             var info = RecordingInfo(file: file, start: started, inProgress: true)
             info.recorderPID = client.pid
@@ -510,6 +515,8 @@ final class RecordingController {
             if !joining { notes = [] }
             startTicking()
             withAnimation(Theme.ease) { phase = .recording }
+            // the live helper listens in on the other side while the meeting is recorded
+            if withSystemAudio { model.helper.attach(ring: RecordingTracks.live(for: client.output), session: session) }
             model.reload()
             // the helper may have quit between saying it was ready and being taken over here
             if let early = endedEarly, early.client == ObjectIdentifier(client) {
@@ -676,6 +683,7 @@ final class RecordingController {
     private func close() {
         // once per recording: the helper ending on its own and a Stop in progress may both get here
         guard phase != .idle else { return }
+        model?.helper.detach()
         let finished = session
         ticker?.invalidate()
         ticker = nil

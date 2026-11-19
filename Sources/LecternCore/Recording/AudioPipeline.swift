@@ -101,6 +101,10 @@ final class AudioPipeline: @unchecked Sendable {
     var levelPeak: Int16 = 0
     var levelFrames = 0
 
+    /// Where the last minutes of this track are also kept for whoever listens in while it is recorded.
+    var liveURL: URL?
+    var live: LiveAudioRing?
+
     /// Wall clock for gap detection; the synthetic source replaces it.
     var now: () -> Double = monotonicNow
     /// Test hook: pretend the writer is not ready.
@@ -159,6 +163,7 @@ final class AudioPipeline: @unchecked Sendable {
             guard makeWriter() else { return fail() }
             origin = start
             startDate = Date().addingTimeInterval(-(now() - start))
+            if let liveURL { live = try? LiveAudioRing(writingTo: liveURL, sampleRate: rate, start: startDate ?? Date()) }
             // on disk from the first sample: the start time is what places this file next to another track
             writeSidecar(report(.recording))
             onReady(report(.recording))
@@ -185,6 +190,7 @@ final class AudioPipeline: @unchecked Sendable {
             items.append(.audio(converted))
             queuedAudio += n
             position += n
+            live?.append(converted.int16ChannelData![0], count: n)
         }
         pump()
     }
@@ -216,6 +222,7 @@ final class AudioPipeline: @unchecked Sendable {
             items.append(.silence(frames))
         }
         position += frames
+        live?.append(nil, count: frames)
     }
 
     func noteDeviceChange(_ name: String) {
@@ -292,6 +299,7 @@ final class AudioPipeline: @unchecked Sendable {
             items.append(.audio(rest))
             queuedAudio += n
             position += n
+            live?.append(rest.int16ChannelData![0], count: n)
         }
     }
 
@@ -354,6 +362,10 @@ final class AudioPipeline: @unchecked Sendable {
     func complete(_ r: RecordingReport) {
         guard !finished else { return }
         finished = true
+        // nobody listens in on a track that is over
+        live?.close()
+        live = nil
+        if let liveURL { try? FileManager.default.removeItem(at: liveURL) }
         if writer != nil { writeSidecar(r) }
         onFinish(r)
     }

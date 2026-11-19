@@ -52,6 +52,8 @@ extension Library {
                     recording.systemAudio = TrackMerger.mixPending(file)
                     if let length = AudioLength.seconds(of: file) { recording.duration = length }
                 }
+                // the ring the live helper listened in on is of no use once nothing writes it
+                if !recording.inProgress { try? FileManager.default.removeItem(at: RecordingTracks.live(for: file)) }
                 removeOldCopies(of: file, now: now)
                 if recording != listed { recovered[recording.file] = recording }
             }

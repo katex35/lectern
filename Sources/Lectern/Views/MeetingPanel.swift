@@ -60,7 +60,7 @@ private final class FirstClickHostingView<Content: View>: NSHostingView<Content>
 final class MeetingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
-    init(content: MeetingNotice) {
+    init<Content: View>(content: Content) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
@@ -89,7 +89,10 @@ final class MeetingPanel: NSPanel {
             if let item {
                 x = min(max(item.frame.midX - frame.width / 2, visible.minX + 10), visible.maxX - frame.width - 10)
             }
-            setFrameOrigin(NSPoint(x: x, y: visible.maxY - frame.height - 8))
+            // below any panel that is already there: an answer never covers "Is this a meeting?"
+            let others = NSApp.windows.filter { $0 !== self && $0 is MeetingPanel && $0.isVisible && $0.alphaValue > 0.5 }
+            let top = others.map(\.frame.minY).min() ?? visible.maxY
+            setFrameOrigin(NSPoint(x: x, y: top - frame.height - 8))
         }
         alphaValue = 0
         orderFrontRegardless()

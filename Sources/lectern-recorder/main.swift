@@ -1,12 +1,14 @@
 // Records one microphone stream in its own process, so a crash or quit of the app does not stop it.
 //
 //   lectern-recorder <output.m4a> [--device ID] [--max-duration S] [--fragment S] [--system-audio]
-//                    [--watchdog S]
+//                    [--watchdog S] [--live]
 //   lectern-recorder <output.m4a> --simulate S [--gap START:LENGTH]...     (tests, demos)
 //   lectern-recorder --list-devices
 //
 // With --system-audio what the Mac plays is recorded next to the microphone (a meeting's other side)
 // and mixed into the output once the recording stops. The microphone never waits for it.
+// With --live the last two minutes of what the Mac plays are also kept in a small file next to the
+// output while recording, for the app's live helper to listen in.
 // With --watchdog the recording ends by itself when no SIGUSR1 arrived for that long: a meeting
 // recorded automatically is ended by the app, and must not run on when the app is gone.
 //
@@ -74,11 +76,13 @@ if let v = option("--max-duration").flatMap(Double.init) { config.maxDuration = 
 if let v = option("--fragment").flatMap(Double.init) { config.fragmentInterval = v }
 let deviceID = option("--device")
 let watchdogSeconds = option("--watchdog").flatMap(Double.init)
-let wantsSystemAudio: Bool = {
-    guard let i = args.firstIndex(of: "--system-audio") else { return false }
+func flag(_ name: String) -> Bool {
+    guard let i = args.firstIndex(of: name) else { return false }
     args.remove(at: i)
     return true
-}()
+}
+let wantsSystemAudio = flag("--system-audio")
+let wantsLive = flag("--live")
 let simulate = option("--simulate").flatMap(Double.init)
 var gaps: [(Double, Double)] = []
 while let g = option("--gap") {
@@ -93,7 +97,8 @@ guard args.count == 1 else {
 let output = URL(fileURLWithPath: args[0])
 let recorder = Recorder(output: output, configuration: config)
 let systemAudio: SystemAudioRecorder? = wantsSystemAudio
-    ? SystemAudioRecorder(output: RecordingTracks.system(for: output), configuration: config) : nil
+    ? SystemAudioRecorder(output: RecordingTracks.system(for: output), configuration: config,
+                          live: wantsLive ? RecordingTracks.live(for: output) : nil) : nil
 systemAudio?.onEvent = { event in
     switch event {
     case .heard: emit(Line(event: "system", state: "recording"))

@@ -27,6 +27,17 @@ enum Providers {
         return GeminiTranscriber(apiKey: key)
     }
 
+    /// The model the live helper hands a few seconds of the call to: the linked Google account first,
+    /// else a Gemini key. The same accounts that transcribe.
+    static func listener() -> (any Listening)? {
+        if fake { return Snapshots.FakeListener() }
+        if let account = (try? credentials.antigravityAccount()) ?? nil {
+            return AntigravityTranscriber(session: antigravitySession(account))
+        }
+        guard let key = (try? credentials.apiKey(for: .gemini)) ?? nil else { return nil }
+        return GeminiListener(apiKey: key)
+    }
+
     /// The first connected service in the order the top bar names it, with the model to write with.
     static func writer() async throws -> SessionProcessor.Writer? {
         if fake { return SessionProcessor.Writer(provider: Snapshots.FakeWriter(), model: "fake") }

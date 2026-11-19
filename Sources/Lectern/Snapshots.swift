@@ -64,12 +64,14 @@ enum Snapshots {
         UserDefaults.standard.set(lastTab, forKey: SettingsView.tabKey)
 
         // the small panels automatic recording shows under the menu bar, on a desktop-like grey
-        for sample in MeetingWatcher.sampleNotices {
-            let renderer = ImageRenderer(content: sample.notice.padding(24).background(Color(hex: 0xD9D9D9)))
+        var panels: [(String, AnyView)] = MeetingWatcher.sampleNotices.map { ($0.name, AnyView($0.notice)) }
+        panels += MeetingHelperCenter.sampleNotices.map { ($0.name, AnyView($0.notice)) }
+        for (name, notice) in panels {
+            let renderer = ImageRenderer(content: notice.padding(24).background(Color(hex: 0xD9D9D9)))
             renderer.scale = 2
             if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
                let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-                try? png.write(to: folder.appendingPathComponent("1k-panel-\(sample.name).png"))
+                try? png.write(to: folder.appendingPathComponent("1k-panel-\(name).png"))
             }
         }
 
@@ -217,8 +219,14 @@ enum Snapshots {
 
     /// A meeting: the microphone with what the Mac plays next to it, mixed when it stops.
     private static func meeting(_ model: AppModel, window: NSWindow, folder: URL, seconds: Double) async {
+        // what the live helper tells the model, to try the wording outside the app
+        try? MeetingHelper.prompt(.init(mode: .listening, language: appLanguage)).write(
+            to: folder.appendingPathComponent("helper-prompt.txt"), atomically: true, encoding: .utf8)
         model.record(nil, meeting: true)
-        await pause(seconds)
+        // near the end the key is pressed once, as the user would
+        await pause(seconds * 0.8)
+        model.helper.keyPressed()
+        await pause(seconds * 0.2)
         save(window, to: folder.appendingPathComponent("6-meeting.png"))
         await model.recorder.stop()
         if let session = model.recorder.session {
@@ -234,6 +242,14 @@ enum Snapshots {
             try await Task.sleep(nanoseconds: 600_000_000)
             let root = ProcessInfo.processInfo.environment["LECTERN_LIBRARY"].map { URL(fileURLWithPath: $0) } ?? Library.defaultRoot
             return try Data(contentsOf: root.appendingPathComponent("Covers/VERIBILIMI.jpg"))
+        }
+    }
+
+    /// Hears a question in whatever it is handed.
+    struct FakeListener: Listening {
+        func answer(prompt: String, audio: Data, mimeType: String) async throws -> String {
+            try await Task.sleep(nanoseconds: 700_000_000)
+            return #"{"heard": "How many students took part in the pilot?", "kind": "question", "forMe": true, "confidence": 0.9, "question": "How many students took part in the pilot?", "gist": "Pilota kaç öğrenci katıldı?", "answer": {"headline": "I will check the exact number", "points": ["I do not have the figure at hand.", "I will send it right after the call."]}}"#
         }
     }
 

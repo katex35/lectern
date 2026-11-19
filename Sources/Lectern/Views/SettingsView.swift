@@ -103,6 +103,8 @@ private struct MeetingSection: View {
     @Environment(AppModel.self) private var model
     @AppStorage(MeetingSettings.systemAudioKey) private var systemAudio = true
     @AppStorage(MeetingSettings.controlKey) private var control = false
+    @AppStorage(HelperSettings.modeKey) private var helper = MeetingHelper.Setting.off.rawValue
+    @AppStorage(HelperSettings.sensitivityKey) private var sensitivity = MeetingHelper.Sensitivity.medium.rawValue
 
     var body: some View {
         Section {
@@ -118,6 +120,44 @@ private struct MeetingSection: View {
             Text(L(SystemAudioRecorder.isSupported ? "settings.meetings.footer" : "settings.meetings.unsupported"))
                 .foregroundStyle(Theme.tertiary)
         }
+        Section {
+            Picker(L("settings.helper"), selection: $helper) {
+                Text(L("settings.helper.off")).tag(MeetingHelper.Setting.off.rawValue)
+                Text(L("settings.helper.key", GlobalHotKey.helperKey.label)).tag(MeetingHelper.Setting.key.rawValue)
+                Text(L("settings.helper.auto")).tag(MeetingHelper.Setting.auto.rawValue)
+            }
+            .disabled(!HelperSettings.isAvailable || !systemAudio)
+            if helper == MeetingHelper.Setting.auto.rawValue {
+                Picker(L("settings.helper.sensitivity"), selection: $sensitivity) {
+                    Text(L("settings.helper.sensitivity.low")).tag(MeetingHelper.Sensitivity.low.rawValue)
+                    Text(L("settings.helper.sensitivity.medium")).tag(MeetingHelper.Sensitivity.medium.rawValue)
+                    Text(L("settings.helper.sensitivity.high")).tag(MeetingHelper.Sensitivity.high.rawValue)
+                }
+            }
+            LabeledContent(L("settings.helper.notes")) {
+                Button(L("settings.helper.notes.open")) { openNotes() }
+            }
+        } header: {
+            Text(L("settings.helper.title"))
+        } footer: {
+            // says exactly what leaves the Mac in the mode that is chosen
+            Text(L(helper == MeetingHelper.Setting.auto.rawValue ? "settings.helper.footer.auto"
+                   : helper == MeetingHelper.Setting.key.rawValue ? "settings.helper.footer.key" : "settings.helper.footer.off",
+                   GlobalHotKey.helperKey.label))
+                .foregroundStyle(Theme.tertiary)
+        }
+    }
+}
+
+extension MeetingSection {
+    /// The helper's notes are a plain file in the library; it starts with a few lines saying what to put in.
+    func openNotes() {
+        let url = HelperSettings.notesURL(model.library)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: model.library.root, withIntermediateDirectories: true)
+            try? L("settings.helper.notes.template").write(to: url, atomically: true, encoding: .utf8)
+        }
+        NSWorkspace.shared.open(url)
     }
 }
 
