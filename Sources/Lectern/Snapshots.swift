@@ -58,6 +58,12 @@ enum Snapshots {
             UserDefaults.standard.set("general", forKey: SettingsView.tabKey)
             await pause(1.2)
             save(settings, to: folder.appendingPathComponent("1e-general.png"))
+            // the end of the page: meetings and the live helper
+            if let scroll = Self.scrollView(in: settings.contentView), let page = scroll.documentView {
+                page.scroll(NSPoint(x: 0, y: page.isFlipped ? max(0, page.bounds.height - scroll.contentSize.height) : 0))
+                await pause(0.6)
+                save(settings, to: folder.appendingPathComponent("1e-general-end.png"))
+            }
             settings.close()
             await pause(0.5)
         }
@@ -312,6 +318,15 @@ enum Snapshots {
 
     private static func pause(_ seconds: Double) async {
         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+
+    private static func scrollView(in view: NSView?) -> NSScrollView? {
+        guard let view else { return nil }
+        if let scroll = view as? NSScrollView, (scroll.documentView?.bounds.height ?? 0) > scroll.contentSize.height { return scroll }
+        for child in view.subviews {
+            if let found = scrollView(in: child) { return found }
+        }
+        return nil
     }
 
     private static func save(_ window: NSWindow, to url: URL) {

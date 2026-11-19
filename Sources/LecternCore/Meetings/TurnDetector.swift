@@ -34,6 +34,10 @@ public struct TurnDetector: Sendable {
     private var recent: [Double] = []
     private var cursor = 0
     static let window = 250
+    /// Until a second of the line has been heard its quietest moment is not known yet; no room on a
+    /// call is louder than this, so speech that is there from the first sample still counts.
+    static let warmUp = 50
+    static let loudestRoom = 1e-4
     private var speechStart: Int?
     private var speechFrames = 0
     private var quietFrames = 0
@@ -89,7 +93,8 @@ public struct TurnDetector: Sendable {
                 recent[cursor] = level
                 cursor = (cursor + 1) % Self.window
             }
-            let floor = recent.min() ?? 0
+            var floor = recent.min() ?? 0
+            if recent.count < Self.warmUp { floor = min(floor, Self.loudestRoom) }
             // louder than the room by a clear margin (about 10 dB), and louder than any quiet room
             let loud = level > max(floor * 10, 2e-6)
             if loud {

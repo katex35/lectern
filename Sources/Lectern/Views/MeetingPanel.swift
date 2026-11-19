@@ -59,6 +59,8 @@ private final class FirstClickHostingView<Content: View>: NSHostingView<Content>
 /// from the meeting, shows over full screen apps too, and is left out of screen sharing.
 final class MeetingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    /// On its way out: still on screen for a moment, but no longer a place others keep clear of.
+    private var leaving = false
 
     init<Content: View>(content: Content) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
@@ -90,9 +92,12 @@ final class MeetingPanel: NSPanel {
                 x = min(max(item.frame.midX - frame.width / 2, visible.minX + 10), visible.maxX - frame.width - 10)
             }
             // below any panel that is already there: an answer never covers "Is this a meeting?"
-            let others = NSApp.windows.filter { $0 !== self && $0 is MeetingPanel && $0.isVisible && $0.alphaValue > 0.5 }
+            let others = NSApp.windows.filter { window in
+                guard window !== self, window.isVisible, let panel = window as? MeetingPanel else { return false }
+                return !panel.leaving
+            }
             let top = others.map(\.frame.minY).min() ?? visible.maxY
-            setFrameOrigin(NSPoint(x: x, y: top - frame.height - 8))
+            setFrameOrigin(NSPoint(x: x, y: max(visible.minY + 10, top - frame.height - 8)))
         }
         alphaValue = 0
         orderFrontRegardless()
@@ -103,6 +108,7 @@ final class MeetingPanel: NSPanel {
     }
 
     func dismiss() {
+        leaving = true
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.15
             animator().alphaValue = 0

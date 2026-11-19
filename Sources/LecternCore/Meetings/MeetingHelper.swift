@@ -156,7 +156,7 @@ public enum MeetingHelper {
             "- Never invent facts, numbers, names, dates or reasons. Use only what is in the notes below and in the call so far.",
             "- If answering needs a fact you were not given, write a holding answer the person can say honestly (for example that they will check and send it) and name what to check.",
             "- If you cannot tell what the question is about (\"Why?\" with nothing before it), keep kind \"question\", say in the gist that it is unclear what is meant, and use \"answer\": null.",
-            "- \"spoken\" is the language of the audio. \"headline\" and \"points\" are written in that same language, whatever language these instructions or the notes are in: they are said aloud in the call. A headline of at most 8 words, then at most 3 points of at most 18 words each.",
+            "- \"spoken\" is the language of the audio. \"headline\" and \"points\" are written in that same language, whatever language these instructions or the notes are in: they are said aloud in the call. A headline of at most 8 words that is itself the short answer, then at most 3 points of at most 18 words each that add to it and never repeat it.",
             "- \"gist\" says what was asked in one short line, always in \(own).",
             "- \"confidence\" is how sure you are, from 0 to 1, that the person is expected to respond now.",
             "",

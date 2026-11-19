@@ -23,10 +23,8 @@ final class GlobalHotKey {
         }, 1, &type, me, &handler)
         guard installed == noErr else { return nil }
         let id = EventHotKeyID(signature: OSType(0x4C435452), id: 1)   // "LCTR"
-        guard RegisterEventHotKey(code, modifiers, id, GetApplicationEventTarget(), 0, &hotKey) == noErr else {
-            if let handler { RemoveEventHandler(handler) }
-            return nil
-        }
+        // another app holds the key: `deinit` runs for the object given up here and takes the handler away
+        guard RegisterEventHotKey(code, modifiers, id, GetApplicationEventTarget(), 0, &hotKey) == noErr else { return nil }
     }
 
     deinit {

@@ -87,7 +87,7 @@ struct HelperNotice: View {
                     Text(detail)
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.secondary)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -100,10 +100,10 @@ struct HelperNotice: View {
             Spacer(minLength: 0)
             if showsNotUseful, let notUseful {
                 Button(L("helper.notUseful"), action: notUseful)
-                    .buttonStyle(PillButtonStyle(kind: .outline, height: 26))
+                    .buttonStyle(PillButtonStyle(kind: .outline, height: 28))
             }
             Button(L("helper.close"), action: close)
-                .buttonStyle(PillButtonStyle(kind: .outline, height: 26))
+                .buttonStyle(PillButtonStyle(kind: .outline, height: 28))
         }
     }
 }

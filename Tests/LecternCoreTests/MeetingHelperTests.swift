@@ -40,6 +40,42 @@ final class MeetingHelperTests: XCTestCase {
         XCTAssertEqual(from.endFrame, 300)
     }
 
+    func testAReaderWaitsOutAWriterInTheMiddleOfItsWork() throws {
+        let url = folder.appendingPathComponent("ring.pcm")
+        let ring = try LiveAudioRing(writingTo: url, sampleRate: 100, seconds: 2)
+        let samples = (0..<300).map { Int16($0) }
+        samples.withUnsafeBufferPointer { ring.append($0.baseAddress, count: $0.count) }
+        XCTAssertEqual(LiveAudioRing.read(url)?.endFrame, 300)
+        // the writer has said it is changing samples and has not finished: the oldest are in doubt
+        let handle = try FileHandle(forUpdating: url)
+        try handle.seek(toOffset: 16)
+        try handle.write(contentsOf: Data(LiveAudioRing.bytes(UInt64(300) | LiveAudioRing.busy)))
+        XCTAssertNil(LiveAudioRing.read(url), "a ring being written is not handed out")
+        try handle.seek(toOffset: 16)
+        try handle.write(contentsOf: Data(LiveAudioRing.bytes(UInt64(300))))
+        try handle.close()
+        XCTAssertEqual(LiveAudioRing.read(url, last: 1)?.samples.first, 200)
+        // the writer itself leaves the ring whole after every append
+        ring.append(nil, count: 10)
+        XCTAssertEqual(LiveAudioRing.read(url)?.endFrame, 310)
+    }
+
+    func testSpeechFromTheFirstSampleIsATurn() {
+        // the helper begins to listen in the middle of a sentence that fades: there is no quiet
+        // before it to measure the room by
+        var detector = TurnDetector(sampleRate: 16000)
+        var speech: [Int16] = []
+        for i in 0..<16000 {
+            let fade = 1 - Double(i) / 16000 * 0.7
+            speech.append(Int16(9000 * fade * sin(Double(i) * 2 * .pi * 220 / 16000)))
+        }
+        var turns = detector.feed(speech)
+        XCTAssertTrue(detector.isSpeaking, "speech with nothing before it is still speech")
+        turns += detector.feed([Int16](repeating: 0, count: 16000 * 2))
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns.first?.start, 0)
+    }
+
     func testTheRingKeepsOnlyTheNewestWhenItGoesAround() throws {
         let url = folder.appendingPathComponent("ring.pcm")
         let ring = try LiveAudioRing(writingTo: url, sampleRate: 100, seconds: 2)

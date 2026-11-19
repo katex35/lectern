@@ -416,8 +416,11 @@ final class RecordingController {
                 client.heartbeat()
                 startTicking()
                 phase = .recording
-                let ring = RecordingTracks.live(for: client.output)
-                if FileManager.default.fileExists(atPath: ring.path) { model.helper.attach(ring: ring, session: session) }
+                // the ring may not be there yet (nothing has played so far): the recorder's own
+                // command line says whether it keeps one
+                if RecorderClient.recorder(pid, wasStartedWith: "--live") {
+                    model.helper.attach(ring: RecordingTracks.live(for: client.output), session: session, adopted: true)
+                }
                 return recording.automatic
             }
         }
@@ -727,6 +730,8 @@ final class RecordingController {
     }
 
     private func finishRecording() async {
+        // nothing more to listen to, for a break as for the end
+        model?.helper.detach()
         let report = await client?.stop()
         apply(report)
     }

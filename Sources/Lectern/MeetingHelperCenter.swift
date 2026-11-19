@@ -53,6 +53,14 @@ final class MeetingHelperCenter {
     @ObservationIgnored private var panel: MeetingPanel?
     @ObservationIgnored private var panelToken = 0
     @ObservationIgnored private var saidNoAccount = false
+    @ObservationIgnored private var saidKeyTaken = false
+    /// True while the helper is turned on in Settings: the key is held and the ring is read. Off, the
+    /// helper touches nothing, and the key stays with whichever app wants it.
+    @ObservationIgnored private var following = false
+    /// The recording is new and nothing was missed: the track is followed from its first sample.
+    @ObservationIgnored private var fresh = false
+    /// What is in the ring was said before the helper began to listen: start from the end of it.
+    @ObservationIgnored private var skipToEnd = false
     /// After a failure the helper stops asking on its own for a while (a quota, a dead line).
     @ObservationIgnored private var quietUntil = Date.distantPast
     @ObservationIgnored private var failures = 0
@@ -71,8 +79,9 @@ final class MeetingHelperCenter {
         self.model = model
     }
 
-    /// A meeting is being recorded with what the Mac plays kept live at `ring`.
-    func attach(ring: URL, session: Session) {
+    /// A meeting is being recorded with what the Mac plays kept live at `ring`. `adopted`: the
+    /// recording was already going on (Lectern was opened again in the middle of it).
+    func attach(ring: URL, session: Session, adopted: Bool = false) {
         detach()
         self.ring = ring
         self.session = session
@@ -83,14 +92,11 @@ final class MeetingHelperCenter {
         earlier = []
         failures = 0
         quietUntil = .distantPast
+        saidNoAccount = false
+        saidKeyTaken = false
+        fresh = !adopted
+        skipToEnd = false
         isListening = true
-        hotKey = GlobalHotKey(code: GlobalHotKey.helperKey.code, modifiers: GlobalHotKey.helperKey.modifiers) { [weak self] in
-            self?.keyPressed()
-        }
-        if hotKey == nil, HelperSettings.mode != .off {
-            // another app holds the key: say so instead of leaving it dead
-            model?.show(L("helper.keyTaken", GlobalHotKey.helperKey.label))
-        }
         let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -103,6 +109,7 @@ final class MeetingHelperCenter {
         timer?.invalidate()
         timer = nil
         hotKey = nil
+        following = false
         working?.task.cancel()
         working = nil
         ring = nil
@@ -122,10 +129,60 @@ final class MeetingHelperCenter {
 
     // MARK: listening
 
+    /// The helper was turned on, now or before the meeting began. `fromNow`: in the middle of a call.
+    private func follow(fromNow: Bool) {
+        following = true
+        skipToEnd = fromNow
+        detector = nil
+        nextFrame = 0
+        hotKey = GlobalHotKey(code: GlobalHotKey.helperKey.code, modifiers: GlobalHotKey.helperKey.modifiers) { [weak self] in
+            self?.keyPressed()
+        }
+        if hotKey == nil, !saidKeyTaken {
+            // another app holds the key: say so instead of leaving it dead
+            saidKeyTaken = true
+            model?.show(L("helper.keyTaken", GlobalHotKey.helperKey.label))
+        }
+    }
+
+    /// The helper was turned off in the middle of a call: the key is given back, what was being asked
+    /// is dropped, and nothing is shown or written for it.
+    private func unfollow() {
+        following = false
+        hotKey = nil
+        working?.task.cancel()
+        working = nil
+        waiting = []
+        offered = nil
+        detector = nil
+        closePanel()
+    }
+
     private func tick() {
         guard let ring else { return }
-        // Turns are followed whatever the setting, so turning the helper on in the middle of a call
-        // works at once; nothing is sent unless `allowed` says so.
+        let on = HelperSettings.mode != .off
+        if on != following {
+            if on { follow(fromNow: !fresh) } else { unfollow() }
+        }
+        fresh = false
+        guard following else { return }
+        // a request made on its own is dropped the moment asking on its own is no longer allowed
+        if let working, working.mode == .listening, !allowed(.listening) {
+            working.task.cancel()
+            self.working = nil
+            waiting = []
+        }
+        if skipToEnd {
+            // what was said before the helper began to listen is past, not a question to answer now
+            guard let now = LiveAudioRing.read(ring, last: 0) else { return }
+            var start = TurnDetector(sampleRate: now.sampleRate)
+            start.reset(to: now.endFrame)
+            detector = start
+            nextFrame = now.endFrame
+            lastSound = Date()
+            skipToEnd = false
+            return
+        }
         guard let snapshot = LiveAudioRing.read(ring, from: nextFrame) else { return }
         if detector == nil { detector = TurnDetector(sampleRate: snapshot.sampleRate) }
         if snapshot.firstFrame > nextFrame {
@@ -158,7 +215,7 @@ final class MeetingHelperCenter {
 
     /// The key was pressed (also called by the development check).
     func keyPressed() {
-        guard ring != nil, allowed(.asked) else { return }
+        guard ring != nil, following, allowed(.asked) else { return }
         // an offer on screen: the key opens it, nothing is sent again
         if let offered {
             self.offered = nil
@@ -195,20 +252,34 @@ final class MeetingHelperCenter {
         } else {
             snapshot = LiveAudioRing.read(ring, last: Self.keyWindow)
         }
-        guard let snapshot, Double(snapshot.samples.count) / snapshot.sampleRate >= 0.3,
-              let audio = try? AudioClip.m4a(snapshot.samples, sampleRate: snapshot.sampleRate) else {
+        guard let snapshot, Double(snapshot.samples.count) / snapshot.sampleRate >= 0.3 else {
             if mode == .asked { show(.problem(L("helper.nothingHeard")), for: 8, feedback: nil) }
             return
         }
         let notes = (try? String(contentsOf: HelperSettings.notesURL(model.library), encoding: .utf8)) ?? ""
         let prompt = MeetingHelper.prompt(.init(mode: mode, language: appLanguage, name: userFirstName, context: notes,
                                                 earlier: earlier))
-        let at = Double(snapshot.endFrame) / snapshot.sampleRate
+        let samples = snapshot.samples
+        let sampleRate = snapshot.sampleRate
+        let at = Double(snapshot.endFrame) / sampleRate
         let generation = generation
         let patience = Self.patience[mode] ?? 10
         let task = Task { [weak self] in
             let outcome: Result<HelperReply, Error>
             do {
+                // packed away from the main thread: half a minute of sound takes a moment
+                let audio = try await Task.detached(priority: .userInitiated) {
+                    try AudioClip.m4a(samples, sampleRate: sampleRate)
+                }.value
+                guard !Task.isCancelled, let self else { return }
+                // the last look before anything leaves the Mac: still this meeting, still allowed
+                guard self.generation == generation, self.following, self.allowed(mode) else {
+                    if self.generation == generation {
+                        self.working = nil
+                        self.waiting = []
+                    }
+                    return
+                }
                 let text = try await Self.withPatience(patience) {
                     try await listener.answer(prompt: prompt, audio: audio, mimeType: AudioClip.mimeType)
                 }
@@ -226,6 +297,12 @@ final class MeetingHelperCenter {
         // an answer for a meeting that is over, or was replaced by another, goes nowhere
         guard generation == self.generation, ring != nil else { return }
         working = nil
+        // turned off, or no longer allowed to ask on its own, while the model worked: the reply is
+        // neither shown nor written down
+        guard following, allowed(mode) else {
+            waiting = []
+            return
+        }
         defer {
             // the oldest turn still fresh enough is next
             waiting.removeAll { Date().timeIntervalSince($0.ended) > Self.staleAfter }
@@ -333,8 +410,8 @@ final class MeetingHelperCenter {
             question: "How many students took part in the pilot, and how did you measure the improvement?",
             gist: appLanguage == "tr" ? "Pilota kaç öğrenci katıldı, gelişmeyi nasıl ölçtünüz?" : "How many students were in the pilot, and how was progress measured?",
             answer: .init(headline: "42 students, measured before and after",
-                          points: ["42 students from three schools took part in 2025.",
-                                   "We ran the same skills test before and after the programme.",
+                          points: ["They came from three schools, in spring 2025.",
+                                   "The same skills test was run before and after the programme.",
                                    "I can send the full report after the call."]))
         return [("helper-answer", HelperNotice(content: .answer(reply), notUseful: {}, close: {})),
                 ("helper-offer", HelperNotice(content: .offer(reply), close: {})),

@@ -110,6 +110,11 @@ public final class RecorderClient: @unchecked Sendable {
     }
 
     /// The program and arguments `pid` was started with, nil when it cannot be read.
+    /// True if the recorder running as `pid` was started with `flag`.
+    public static func recorder(_ pid: Int32, wasStartedWith flag: String) -> Bool {
+        commandLine(of: pid)?.contains(flag) ?? false
+    }
+
     static func commandLine(of pid: Int32) -> [String]? {
         var mib = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0

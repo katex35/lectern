@@ -8,8 +8,10 @@ import Foundation
 ///                        wall-clock time of frame 0
 ///     then `capacity` 16-bit mono samples
 ///
-/// One writer, any number of readers. A reader takes the count, the samples, then the count again:
-/// if the writer has gone around in between, it reads once more.
+/// One writer, any number of readers, in different processes. The writer marks the count as busy
+/// before it touches a sample and writes the new count when it is done. A reader takes the count,
+/// the samples, then the count again: if the writer was busy at either end, or has gone around in
+/// between, it reads once more.
 public final class LiveAudioRing: @unchecked Sendable {
     public struct Snapshot: Sendable {
         /// 16-bit mono samples, oldest first.
@@ -25,6 +27,8 @@ public final class LiveAudioRing: @unchecked Sendable {
 
     static let magic: [UInt8] = Array("LCRG".utf8)
     static let headerSize = 32
+    /// Set in the count while the writer is changing samples.
+    static let busy: UInt64 = 1 << 63
 
     public let url: URL
     public let sampleRate: Double
@@ -58,6 +62,9 @@ public final class LiveAudioRing: @unchecked Sendable {
     public func append(_ samples: UnsafePointer<Int16>?, count: Int) {
         guard count > 0 else { return }
         lock.withLock {
+            // said first: the oldest samples are about to change, a reader must not trust them
+            try? handle.seek(toOffset: 16)
+            try? handle.write(contentsOf: Data(Self.bytes(UInt64(written) | Self.busy)))
             var done = 0
             // only what still fits the ring matters when more than a ring arrives at once
             if count > capacity {
@@ -95,6 +102,8 @@ public final class LiveAudioRing: @unchecked Sendable {
         var capacity: Int
         var written: Int
         var start: Date
+        /// The writer is in the middle of adding samples.
+        var busy: Bool
     }
 
     static func header(_ handle: FileHandle) -> Header? {
@@ -106,8 +115,9 @@ public final class LiveAudioRing: @unchecked Sendable {
         guard integer(4, UInt32.self) == 1 else { return nil }
         let capacity = Int(integer(12, UInt32.self))
         guard capacity > 0 else { return nil }
-        return Header(sampleRate: Double(integer(8, UInt32.self)), capacity: capacity, written: Int(integer(16, UInt64.self)),
-                      start: Date(timeIntervalSince1970: Double(bitPattern: integer(24, UInt64.self))))
+        let count = integer(16, UInt64.self)
+        return Header(sampleRate: Double(integer(8, UInt32.self)), capacity: capacity, written: Int(count & ~busy),
+                      start: Date(timeIntervalSince1970: Double(bitPattern: integer(24, UInt64.self))), busy: count & busy != 0)
     }
 
     /// The frames from `from` on (or the last `seconds` when `from` is nil), as far as the ring still
@@ -115,8 +125,11 @@ public final class LiveAudioRing: @unchecked Sendable {
     public static func read(_ url: URL, from: Int? = nil, last seconds: Double? = nil) -> Snapshot? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        for _ in 0..<3 {
+        for attempt in 0..<4 {
+            // a write takes microseconds: a moment later the ring is whole again
+            if attempt > 0 { usleep(400) }
             guard let before = header(handle) else { return nil }
+            if before.busy { continue }
             let oldest = max(0, before.written - before.capacity)
             var first = oldest
             if let from { first = max(oldest, from) }
@@ -140,8 +153,9 @@ public final class LiveAudioRing: @unchecked Sendable {
                 done += n
             }
             guard !failed, let after = header(handle) else { return nil }
-            // the writer went past what was being read: those samples are no longer what they were
-            if after.written - after.capacity > first { continue }
+            // the writer was at work, or went past what was being read: those samples are no longer
+            // what they were
+            if after.busy || after.written - after.capacity > first { continue }
             return Snapshot(samples: samples, firstFrame: first, sampleRate: before.sampleRate, start: before.start)
         }
         return nil

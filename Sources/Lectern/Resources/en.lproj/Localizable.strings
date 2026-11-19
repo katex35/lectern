@@ -253,8 +253,8 @@
 "settings.helper.notes.open" = "Open notes";
 "settings.helper.notes.template" = "# Notes for the live helper\n\nWrite here what the helper should know when it suggests an answer in a call: who you are, your organisation, the projects you talk about, numbers you are asked for. It uses nothing else and invents nothing.\n\nYou can also say which questions you want caught and which not.\n";
 "settings.helper.footer.off" = "The helper shows what was asked in a call and something short to say. It is off: nothing is sent anywhere during a call.";
-"settings.helper.footer.key" = "When you press %@ in a recorded meeting, the last 30 seconds of what your Mac played (the call, and anything else that was playing) go to the Gemini model of your Google account, with your notes. Your own microphone is never sent. The box may be visible to others while you share your screen.";
-"settings.helper.footer.auto" = "During a recorded meeting, each stretch of what your Mac plays (the call, and anything else that is playing) goes to the Gemini model of your Google account when it ends, with your notes. Your own microphone is never sent. %@ asks at any moment. The box may be visible to others while you share your screen.";
+"settings.helper.footer.key" = "When you press %@ in a recorded meeting, the last 30 seconds of what your Mac played (the call, and anything else that was playing) go to the Gemini model of your Google account, with your notes and first name. Your own microphone is never sent. The box may be visible to others while you share your screen.";
+"settings.helper.footer.auto" = "During a recorded meeting, each stretch of what your Mac plays (the call, and anything else that is playing) goes to the Gemini model of your Google account when it ends, with your notes and first name. Your own microphone is never sent. %@ asks at any moment. The box may be visible to others while you share your screen.";
 "helper.listening" = "Listening to what was asked";
 "helper.problem" = "The helper could not answer";
 "helper.offer" = "A question, perhaps";

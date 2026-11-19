@@ -47,6 +47,7 @@
 | Transcription | Sign in with Google (the Antigravity sign-in), or a Google AI Studio key |
 | Notes, questions, answers | Sign in with ChatGPT (the Codex sign-in), a Claude, OpenAI or Gemini key, or a local OpenAI-style server |
 | Covers | The ChatGPT sign-in, or an OpenAI or Gemini key |
+| Live helper in a meeting | Sign in with Google, or a Google AI Studio key |
 
 No Lectern server and no sign-up. Keys stay in the macOS Keychain, lectures stay in `~/Documents/Lectern` as plain files.
 
@@ -79,7 +80,8 @@ The microphone permission and notifications need the app bundle; `swift run Lect
 Courses/<course>/course.json          name, language, weekly times, exams
 Courses/<course>/<date> Week <n>/     recordings, transcript.txt, notes.md, questions.md,
                                       dates.json, chat.json, board/ photos, cover.jpg
-Meetings/<date> <time>/               the same for a meeting
+Meetings/<date> <time>/               the same for a meeting, and helper.jsonl if the live helper ran
+helper.md                             what the live helper knows about you
 ```
 
 When Lectern writes a file again, the old one goes to `.lectern/previous` in the lecture's folder.
@@ -89,6 +91,12 @@ When Lectern writes a file again, the old one goes to `.lectern/previous` in the
 With "Record meetings on their own" turned on in Settings, a recording starts when a meeting app (Zoom, Teams, FaceTime, Webex, Slack, Discord, Skype) or a meeting in a browser tab (Meet, Zoom, Webex, Jitsi, a Slack huddle) opens the microphone, and ends three minutes after the call. Where Lectern cannot tell (WhatsApp, Telegram, Firefox, a page it does not know) it starts recording and asks: "No, delete" moves the recording to the Trash, and a recording nobody answered for is kept but sent nowhere until you ask for its notes. To tell a meeting tab from any other page, macOS asks once per browser whether Lectern may read the address of the front tab; addresses are looked at and forgotten. Lectern has to be running for all this; it can open at login and wait in the menu bar. Quitting Lectern ends such a recording first.
 
 From a terminal, `Lectern.app/Contents/MacOS/Lectern --meeting status`, `start`, `stop`, `auto on` or `auto off` talks to the running app and prints its answer as JSON. It works once "Let the command line start and stop meetings" is turned on in Settings: any program on your Mac could send the same request, so Lectern does not listen unless you say so.
+
+**The live helper** is for the moment someone in a call asks you something and you need a second. It is off until you turn it on in Settings, and it works only while a meeting is being recorded with the computer's audio. Press Control-Option-H and a small box under the menu bar shows what was just asked and something short to say: a headline and up to three points, in the language of the call, with the gist in yours. Set to "On its own" it follows the other side by itself and speaks up when a question, a request or an objection waits for you; a question put to somebody else by name, small talk and "can you hear me" are left alone. "Speaks up" in Settings sets how sure it has to be.
+
+What it knows about you is one file, `helper.md` in the library folder ("Open notes" in Settings): who you are, your projects, the numbers you get asked for. The model is told to use only that and the call, and to give you an honest "I will check and send it" when the fact is not there.
+
+What leaves your Mac: with the key, the last 30 seconds of what your Mac played; on its own, each stretch of it when it ends (at most 30 seconds at a time), with your notes, your first name and, as text, what it heard earlier in the call, to Gemini on your Google sign-in or key. That sound is the call and anything else playing at the time. Your microphone is never sent. A recording that began on its own and still waits for "Is this a meeting?" is not listened to until you say yes or press the key. What the helper heard and answered is written to `helper.jsonl` in the meeting's folder, which stays on your Mac. The box is kept out of screenshots and screen sharing where macOS honours that; do not count on it, others may see it while you share your screen. Tell the people you talk to that you record and use a helper where that is expected of you.
 
 **Sign-ins** work the way the Codex CLI and the Antigravity editor sign in: the browser opens OpenAI's or Google's page, and the answer comes back to `localhost:1455` or `localhost:51121`. ChatGPT requests go to ChatGPT's Codex backend on your plan; Gemini requests go to Cloud Code on your Google account's quota.
 
