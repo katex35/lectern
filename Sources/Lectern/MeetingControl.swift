@@ -8,8 +8,12 @@ import LecternCore
 ///     Lectern --meeting stop              end the recording and wait until it is in the library
 ///     Lectern --meeting auto on|off       turn automatic recording on or off
 ///
-/// The command talks to the running app through notifications that only programs on this Mac can
-/// send, prints the answer as JSON and exits: 0 done, 1 Lectern did not answer, 2 it could not be done.
+/// The command talks to the running app through notifications, prints the answer as JSON and exits:
+/// 0 done, 1 Lectern did not answer, 2 it could not be done.
+///
+/// Any program on this Mac can send such a notification, so the app only listens when the user turned
+/// "Let the command line start and stop meetings" on in Settings. Without it the app answers that it
+/// runs and nothing more.
 enum MeetingControl {
     private static let domain = Bundle.main.bundleIdentifier ?? "app.lectern"
     private static let request = Notification.Name("\(domain).meeting.request")
@@ -31,38 +35,43 @@ enum MeetingControl {
         }
         let id = UUID().uuidString
         let center = DistributedNotificationCenter.default()
-        var answer: [AnyHashable: Any]?
-        let observer = center.addObserver(forName: reply, object: id, queue: .main) { answer = $0.userInfo ?? [:] }
-        defer { center.removeObserver(observer) }
-        func ask(for seconds: TimeInterval) -> Bool {
-            center.postNotificationName(request, object: id, userInfo: ["command": command], deliverImmediately: true)
-            let deadline = Date().addingTimeInterval(seconds)
-            while answer == nil, Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1)) }
-            return answer != nil
+        // the app first says that it heard, then sends the result; only the result ends the wait
+        var heard = false
+        var result: [AnyHashable: Any]?
+        let observer = center.addObserver(forName: reply, object: id, queue: .main) { note in
+            heard = true
+            if note.userInfo?["json"] != nil { result = note.userInfo }
         }
-        // the app says at once that it heard; the work itself may take long (a stop mixes the recording)
-        var heard = ask(for: 2)
-        if !heard, command == "start" || command.hasPrefix("auto") {
+        defer { center.removeObserver(observer) }
+        func wait(_ seconds: TimeInterval, until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(seconds)
+            while !done(), Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1)) }
+        }
+        func ask() {
+            center.postNotificationName(request, object: id, userInfo: ["command": command], deliverImmediately: true)
+        }
+        ask()
+        wait(2) { heard }
+        if !heard, command == "start" || command == "auto on" {
             // not running: opened without a window, then asked again until it is up
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
             configuration.arguments = ["--background"]
             NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
-            for _ in 0..<15 where !heard { heard = ask(for: 1) }
+            for _ in 0..<15 where !heard {
+                ask()
+                wait(1) { heard }
+            }
         }
         guard heard else {
             print("{\"running\": false}")
             return 1
         }
-        // "heard" is followed by the result
-        if answer?["pending"] != nil {
-            answer = nil
-            let deadline = Date().addingTimeInterval(1200)
-            while answer == nil, Date() < deadline { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1)) }
-        }
-        guard let answer, let json = answer["json"] as? String else { return 1 }
+        // a stop mixes the recording first: that can take minutes for a long meeting
+        wait(1200) { result != nil }
+        guard let result, let json = result["json"] as? String else { return 1 }
         print(json)
-        return answer["failed"] == nil ? 0 : 2
+        return result["failed"] == nil ? 0 : 2
     }
 
     // MARK: the app
@@ -77,6 +86,12 @@ enum MeetingControl {
                 guard let model, answered.insert(id).inserted else { return }
                 // heard: the command knows the app is there and waits for the result
                 center.postNotificationName(reply, object: id, userInfo: ["pending": "1"], deliverImmediately: true)
+                guard MeetingSettings.allowsControl else {
+                    // not turned on by the user: nothing is done and nothing about recordings is told
+                    let refusal: [String: Any] = ["running": true, "error": "Turn on \"\(L("settings.meetings.control"))\" in Lectern's Settings first."]
+                    center.postNotificationName(reply, object: id, userInfo: ["json": json(refusal), "failed": "1"], deliverImmediately: true)
+                    return
+                }
                 let failure = await perform(command, model)
                 var answer = ["json": json(status(model, error: failure))]
                 if failure != nil { answer["failed"] = "1" }
@@ -92,14 +107,18 @@ enum MeetingControl {
     @MainActor
     private static func perform(_ command: String, _ model: AppModel) async -> String? {
         let recorder = model.recorder
+        // these commands are about meetings: a lecture is never started, taken for one or stopped by them
+        let lecture = !recorder.isIdle && recorder.session?.kind == .lecture && recorder.phase != .starting
         switch command {
         case "start":
-            guard recorder.isIdle else { return recorder.phase == .recording ? nil : "the recorder is busy" }
+            if recorder.phase == .recording, !lecture { return nil }
+            guard recorder.canStart else { return lecture ? "a lecture is being recorded" : "the recorder is busy" }
             await recorder.start(course: nil)
             if case .failed(let message) = recorder.phase { return message }
             return recorder.phase == .recording ? nil : "recording did not start"
         case "stop":
             guard recorder.phase == .recording else { return "nothing is being recorded" }
+            guard !lecture else { return "a lecture is being recorded" }
             await recorder.stop()
             return nil
         case "auto on":

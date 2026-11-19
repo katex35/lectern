@@ -88,7 +88,7 @@ When Lectern writes a file again, the old one goes to `.lectern/previous` in the
 
 With "Record meetings on their own" turned on in Settings, a recording starts when a meeting app (Zoom, Teams, FaceTime, Webex, Slack, Discord, Skype) or a meeting in a browser tab (Meet, Zoom, Webex, Jitsi, a Slack huddle) opens the microphone, and ends three minutes after the call. Where Lectern cannot tell (WhatsApp, Telegram, Firefox, a page it does not know) it starts recording and asks: "No, delete" moves the recording to the Trash, and a recording nobody answered for is kept but sent nowhere until you ask for its notes. To tell a meeting tab from any other page, macOS asks once per browser whether Lectern may read the address of the front tab; addresses are looked at and forgotten. Lectern has to be running for all this; it can open at login and wait in the menu bar. Quitting Lectern ends such a recording first.
 
-From a terminal, `Lectern.app/Contents/MacOS/Lectern --meeting status`, `start`, `stop`, `auto on` or `auto off` talks to the running app and prints its answer as JSON.
+From a terminal, `Lectern.app/Contents/MacOS/Lectern --meeting status`, `start`, `stop`, `auto on` or `auto off` talks to the running app and prints its answer as JSON. It works once "Let the command line start and stop meetings" is turned on in Settings: any program on your Mac could send the same request, so Lectern does not listen unless you say so.
 
 **Sign-ins** work the way the Codex CLI and the Antigravity editor sign in: the browser opens OpenAI's or Google's page, and the answer comes back to `localhost:1455` or `localhost:51121`. ChatGPT requests go to ChatGPT's Codex backend on your plan; Gemini requests go to Cloud Code on your Google account's quota.
 

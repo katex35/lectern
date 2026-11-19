@@ -422,6 +422,9 @@ final class RecordingController {
 
     var isIdle: Bool { phase == .idle }
 
+    /// Nothing is being recorded and a recording may begin (also after a start that failed).
+    var canStart: Bool { phase == .idle || isFailed }
+
     var isActive: Bool {
         switch phase {
         case .starting, .recording, .pausing, .onBreak, .stopping: return true
@@ -452,6 +455,7 @@ final class RecordingController {
         let joining = phase == .onBreak || (isFailed && breakSession != nil && breakSession?.courseID == course?.id)
         phase = .starting
         automatic = meeting?.automatic
+        endedBy = .finished
         stopOnceStarted = false
         var startedClient: RecorderClient?
         var newSession: Session?
@@ -492,15 +496,14 @@ final class RecordingController {
             startedClient = client
             var info = RecordingInfo(file: file, start: started, inProgress: true)
             info.recorderPID = client.pid
-            info.automatic = meeting?.automatic
+            // as it stands now: "Is this a meeting?" may have been answered while the recorder was starting
+            info.automatic = automatic
             session.recordings.append(info)
             try library.save(session)
             self.client = client
             self.session = session
             self.course = course ?? model.course(session.courseID)
             self.file = file
-            automatic = meeting?.automatic
-            endedBy = .finished
             startedAt = started
             breakStartedAt = nil
             breakSession = nil
@@ -612,7 +615,7 @@ final class RecordingController {
     /// A call too short to be sure of (a voice message, a microphone opened by mistake): kept, but its
     /// notes wait for the user like those of a recording nobody confirmed.
     func holdAutomaticProcessing() {
-        guard automatic?.confirmed == true, let model, let file, let current = session else { return }
+        guard automatic?.confirmed == true, phase == .recording, let model, let file, let current = session else { return }
         automatic?.confirmed = false
         var session = model.library.reload(current) ?? current
         if let index = session.recordings.firstIndex(where: { $0.file == file }) {
@@ -624,15 +627,27 @@ final class RecordingController {
 
     /// The answer to "Is this a meeting?" was no: the recording ends and goes to the Trash.
     func discardAutomatic() async {
-        guard automatic != nil else { return }
-        endedBy = .rejected
+        guard refuseAutomatic() else { return }
         await stopAutomatic()
+    }
+
+    /// Takes the "no" down at once, before anything is stopped: from here on the recording is thrown
+    /// away however it ends (the call ending by itself, a Stop already under way, a crash). While the
+    /// recorder is still starting there is no folder to mark yet; the answer is kept and applied then.
+    @discardableResult
+    func refuseAutomatic() -> Bool {
+        guard automatic != nil, !isIdle else { return false }
+        endedBy = .rejected
+        if phase == .recording || phase == .stopping, let session { model?.library.markDiscarded(session) }
+        return true
     }
 
     /// The answer to "Is this a meeting?" was yes: the recording is processed like any other.
     func confirmAutomatic() {
-        guard automatic != nil, let model, let file, let current = session else { return }
+        guard automatic != nil else { return }
         automatic?.confirmed = true
+        // still starting: the answer is saved with the recording once it exists
+        guard phase == .recording, let model, let file, let current = session else { return }
         var session = model.library.reload(current) ?? current
         if let index = session.recordings.firstIndex(where: { $0.file == file }) {
             session.recordings[index].automatic?.confirmed = true

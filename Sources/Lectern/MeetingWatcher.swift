@@ -152,7 +152,9 @@ final class MeetingWatcher {
     private func showQuestion(about app: MeetingApp) {
         show(Self.questionNotice(app: app.name, no: { [weak self] in
             self?.closePanel()
-            Task { await self?.model?.recorder.discardAutomatic() }
+            // the answer is taken down before anything else can happen to the recording
+            guard let recorder = self?.model?.recorder, recorder.refuseAutomatic() else { return }
+            Task { await recorder.stopAutomatic() }
         }, yes: { [weak self] in
             self?.policy.confirm()
             self?.model?.recorder.confirmAutomatic()

@@ -58,7 +58,8 @@ extension Library {
             guard !recovered.isEmpty else { continue }
             // Repairs take a while and the app is in use meanwhile: a note may have been typed, another
             // recording started. Only the recordings handled here are written into the session as it is now.
-            var fresh = reload(session) ?? session
+            // A session that is gone (refused and thrown away meanwhile) is not brought back.
+            guard var fresh = reload(session), !isDiscarded(fresh) else { continue }
             for index in fresh.recordings.indices {
                 if let recording = recovered[fresh.recordings[index].file] { fresh.recordings[index] = recording }
             }

@@ -56,6 +56,13 @@ final class MeetingServiceTests: XCTestCase {
         XCTAssertEqual(MeetingApps.app(for: AudioUser(bundle: "", path: "/usr/libexec/avconferenced", input: true))?.id, "facetime")
         XCTAssertEqual(MeetingApps.app(for: AudioUser(bundle: "", path: "/Applications/Slack.app/Contents/Frameworks/Slack Helper", input: true))?.id, "slack")
         XCTAssertNil(MeetingApps.app(for: AudioUser(bundle: "com.apple.Music", input: false, output: true)))
+        // two browsers of one maker are told apart: a meeting tab in one says nothing about the other
+        let arc = MeetingApps.app(for: AudioUser(bundle: "company.thebrowser.Browser.helper", input: true))
+        let dia = MeetingApps.app(for: AudioUser(bundle: "company.thebrowser.dia.helper", input: true))
+        XCTAssertEqual(arc?.browsers, ["company.thebrowser.Browser"])
+        XCTAssertEqual(dia?.browsers, ["company.thebrowser.dia"])
+        // every browser is asked about unless its front tab is a known meeting
+        for app in MeetingApps.all where !app.browsers.isEmpty { XCTAssertTrue(app.ask, app.id) }
         XCTAssertNil(MeetingApps.app(for: AudioUser(bundle: "", path: "", input: true)))
     }
 }

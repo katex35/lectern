@@ -102,6 +102,7 @@ private struct NotesSection: View {
 private struct MeetingSection: View {
     @Environment(AppModel.self) private var model
     @AppStorage(MeetingSettings.systemAudioKey) private var systemAudio = true
+    @AppStorage(MeetingSettings.controlKey) private var control = false
 
     var body: some View {
         Section {
@@ -110,6 +111,7 @@ private struct MeetingSection: View {
             Toggle(L("settings.meetings.auto"), isOn: Binding(get: { model.meetings.enabled },
                                                              set: { model.meetings.setEnabled($0) }))
                 .disabled(!MeetingSettings.canAutoRecord)
+            Toggle(L("settings.meetings.control"), isOn: $control)
         } header: {
             Text(L("settings.meetings.title"))
         } footer: {

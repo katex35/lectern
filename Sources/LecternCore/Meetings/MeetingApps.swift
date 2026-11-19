@@ -63,8 +63,11 @@ public enum MeetingApps {
               browsers: ["com.google.Chrome"]),
         .init(id: "safari", name: "Safari", bundles: ["com.apple.Safari", "com.apple.WebKit.GPU"],
               paths: ["/Safari.app/", "com.apple.WebKit.GPU"], ask: true, browsers: ["com.apple.Safari"]),
-        .init(id: "arc", name: "Arc", bundles: ["company.thebrowser."], paths: ["/Arc.app/", "/Dia.app/"], ask: true,
-              browsers: ["company.thebrowser.Browser", "company.thebrowser.dia"]),
+        // one maker, two browsers: a meeting tab in one says nothing about the microphone of the other
+        .init(id: "arc", name: "Arc", bundles: ["company.thebrowser.Browser"], paths: ["/Arc.app/"], ask: true,
+              browsers: ["company.thebrowser.Browser"]),
+        .init(id: "dia", name: "Dia", bundles: ["company.thebrowser.dia"], paths: ["/Dia.app/"], ask: true,
+              browsers: ["company.thebrowser.dia"]),
         .init(id: "edge", name: "Edge", bundles: ["com.microsoft.edgemac"], paths: ["/Microsoft Edge.app/"], ask: true,
               browsers: ["com.microsoft.edgemac"]),
         .init(id: "brave", name: "Brave", bundles: ["com.brave.Browser"], paths: ["/Brave Browser.app/"], ask: true,

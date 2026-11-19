@@ -238,3 +238,4 @@
 "meeting.added.show" = "Show in Finder";
 "meeting.added.open" = "Open in Lectern";
 "settings.meetings.unsupported" = "Needs macOS 14.2 or later.";
+"settings.meetings.control" = "Let the command line start and stop meetings";

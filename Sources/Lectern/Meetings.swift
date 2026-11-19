@@ -6,6 +6,12 @@ import ServiceManagement
 enum MeetingSettings {
     static let systemAudioKey = "meetings.systemAudio"
     static let autoRecordKey = "meetings.autoRecord"
+    static let controlKey = "meetings.control"
+
+    /// `Lectern --meeting ...` may start and stop recordings. Off unless turned on: the command
+    /// reaches the app through notifications any program on this Mac can send, and Lectern must not
+    /// lend its microphone permission to whoever asks.
+    static var allowsControl: Bool { UserDefaults.standard.bool(forKey: controlKey) }
     /// An automatic recording ends by itself when the app has been gone this long.
     static let watchdog: Double = 180
     /// A meeting may run longer than a lecture before the recorder stops on its own.

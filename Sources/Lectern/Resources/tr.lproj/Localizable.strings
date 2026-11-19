@@ -238,3 +238,4 @@
 "meeting.added.show" = "Finder'da göster";
 "meeting.added.open" = "Lectern'de aç";
 "settings.meetings.unsupported" = "macOS 14.2 ya da sonrası gerekir.";
+"settings.meetings.control" = "Komut satırı toplantı kaydını başlatıp bitirebilsin";
