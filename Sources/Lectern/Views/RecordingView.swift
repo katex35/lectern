@@ -144,18 +144,21 @@ private struct Controls: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Button { Task { await model.recorder.takeBreak() } } label: {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.ink)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(.white))
-                    .overlay(Circle().strokeBorder(Theme.field))
+            // a meeting that began on its own ends with its call: it has no break
+            if model.recorder.automatic == nil {
+                Button { Task { await model.recorder.takeBreak() } } label: {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(.white))
+                        .overlay(Circle().strokeBorder(Theme.field))
+                }
+                .buttonStyle(.plain)
+                .help(L("recording.breakHelp"))
+                .accessibilityLabel(L("recording.takeBreak"))
+                .keyboardShortcut("k", modifiers: [.command, .option])
             }
-            .buttonStyle(.plain)
-            .help(L("recording.breakHelp"))
-            .accessibilityLabel(L("recording.takeBreak"))
-            .keyboardShortcut("k", modifiers: [.command, .option])
 
             StopButton()
         }

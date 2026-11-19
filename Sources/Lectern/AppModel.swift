@@ -347,6 +347,10 @@ final class RecordingController {
     private var endedBy = AutoRecordPolicy.End.finished
     /// The call ended while the recording was still starting (macOS was asking for the microphone).
     private var stopOnceStarted = false
+    /// The helper while it is starting, so quitting can end it.
+    private var startingClient: RecorderClient?
+    /// The app is quitting: what is closed now is not processed now.
+    private var quitting = false
     private var ticks = 0
     /// Advances once a second while active; the menu bar label reads it, since a TimelineView there
     /// keeps the status item redrawing without pause.
@@ -363,9 +367,12 @@ final class RecordingController {
 
     private func startTicking() {
         ticker?.invalidate()
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.everySecond() }
         }
+        // also while a menu is open: an automatic recording lives on the heartbeat sent from here
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
     }
 
     private func everySecond() {
@@ -434,12 +441,13 @@ final class RecordingController {
     }
 
     func start(course: Course?, meeting: MeetingStart? = nil) async {
-        guard let model, phase == .idle || phase == .onBreak || isFailed else { return }
-        // a recording that begins on its own never takes over a break or a failure the user is looking at
+        // A recording that begins on its own never takes over anything the user started or is looking
+        // at (another recording, a break, a failure). Whoever asked for it is always told.
         if meeting?.automatic != nil, phase != .idle {
             onAutomaticEnd?(.failed, nil)
             return
         }
+        guard let model, phase == .idle || phase == .onBreak || isFailed else { return }
         // a break, or a failed attempt to come back from one for the same course, continues that session
         let joining = phase == .onBreak || (isFailed && breakSession != nil && breakSession?.courseID == course?.id)
         phase = .starting
@@ -475,6 +483,8 @@ final class RecordingController {
             let isMeeting = session.kind == .meeting
             let withSystemAudio = isMeeting && MeetingSettings.recordsSystemAudio
             systemAudio = withSystemAudio ? .waiting : .off
+            startingClient = client
+            defer { startingClient = nil }
             let started = try await client.start(
                 deviceID: isMeeting && simulate == nil ? AVCaptureDevice.default(for: .audio)?.uniqueID : nil,
                 maxDuration: isMeeting ? MeetingSettings.maxDuration : nil, simulate: simulate,
@@ -505,7 +515,7 @@ final class RecordingController {
                 close()
             } else if stopOnceStarted {
                 stopOnceStarted = false
-                await stopAutomatic()
+                await stopAutomatic(quitting: quitting)
             }
         } catch {
             // a helper that did start must not keep recording with nobody to stop it
@@ -542,7 +552,8 @@ final class RecordingController {
 
     /// Ends this half of the lecture; `resume` starts the next recording in the same session.
     func takeBreak() async {
-        guard phase == .recording else { return }
+        // a recording that began on its own ends with its call; a break would leave nobody to end it
+        guard phase == .recording, automatic == nil else { return }
         phase = .pausing
         await finishRecording()
         guard phase == .pausing else { return }
@@ -568,11 +579,47 @@ final class RecordingController {
         if automatic != nil, phase == .starting { stopOnceStarted = true }
         guard automatic != nil, phase == .recording else { return }
         phase = .stopping
-        if quitting { automatic?.confirmed = false }
+        if quitting { self.quitting = true }
         // written down before anything else: a crash from here on must not bring a refused recording back
         if endedBy == .rejected, let session { model?.library.markDiscarded(session) }
         await finishRecording()
         close()
+    }
+
+    /// The app is about to quit: a recording that began on its own is ended and added first, whatever
+    /// it is doing. Its notes are not started now.
+    func settleAutomaticForQuit() async {
+        guard automatic != nil else { return }
+        quitting = true
+        func wait(upTo seconds: Double, while condition: () -> Bool) async {
+            var left = Int(seconds * 10)
+            while condition(), left > 0 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                left -= 1
+            }
+        }
+        if phase == .starting {
+            // usually a moment; when macOS is still asking for the microphone, the helper is ended instead
+            stopOnceStarted = true
+            await wait(upTo: 3) { self.phase == .starting }
+            if phase == .starting, let pid = startingClient?.pid { kill(pid, SIGKILL) }
+            await wait(upTo: 3) { self.phase == .starting }
+        }
+        if phase == .recording { await stopAutomatic(quitting: true) }
+        await wait(upTo: 900) { self.phase == .stopping }
+    }
+
+    /// A call too short to be sure of (a voice message, a microphone opened by mistake): kept, but its
+    /// notes wait for the user like those of a recording nobody confirmed.
+    func holdAutomaticProcessing() {
+        guard automatic?.confirmed == true, let model, let file, let current = session else { return }
+        automatic?.confirmed = false
+        var session = model.library.reload(current) ?? current
+        if let index = session.recordings.firstIndex(where: { $0.file == file }) {
+            session.recordings[index].automatic?.confirmed = false
+            try? model.library.save(session)
+            self.session = session
+        }
     }
 
     /// The answer to "Is this a meeting?" was no: the recording ends and goes to the Trash.
@@ -612,6 +659,8 @@ final class RecordingController {
     }
 
     private func close() {
+        // once per recording: the helper ending on its own and a Stop in progress may both get here
+        guard phase != .idle else { return }
         let finished = session
         ticker?.invalidate()
         ticker = nil
@@ -622,9 +671,10 @@ final class RecordingController {
         stopAfterPause = false
         client = nil
         systemAudio = .off
-        let wasAutomatic = automatic, how = endedBy
+        let wasAutomatic = automatic, how = endedBy, wasQuitting = quitting
         automatic = nil
         endedBy = .finished
+        quitting = false
         var closed: Session?
         if how == .rejected, wasAutomatic != nil, let finished, let model {
             // "not a meeting": nothing of it stays in the library
@@ -648,7 +698,7 @@ final class RecordingController {
             if wasAutomatic == nil { model.open(fresh) }
             // the lecture is over: transcript and notes start right away. A recording nobody confirmed
             // to be a meeting waits until the user asks for them.
-            if wasAutomatic?.confirmed != false { model.processing.process(fresh) }
+            if wasAutomatic?.confirmed != false, !wasQuitting { model.processing.process(fresh) }
         }
         if wasAutomatic != nil { onAutomaticEnd?(how, closed) }
     }

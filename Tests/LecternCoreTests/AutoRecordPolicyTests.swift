@@ -16,6 +16,8 @@ final class AutoRecordPolicyTests: XCTestCase {
     override func setUp() {
         policy = AutoRecordPolicy()
         policy.setEnabled(true, now: now)
+        // the first look finds nobody in a call
+        _ = policy.observe([], recorderBusy: false, now: now)
     }
 
     /// Runs `seconds` ticks with the same users and returns every effect, with the second it came in.
@@ -135,6 +137,31 @@ final class AutoRecordPolicyTests: XCTestCase {
         XCTAssertTrue(run(300, [zoomMic]).isEmpty)
         XCTAssertTrue(run(31, []).isEmpty)
         XCTAssertNotNil(started(run(5, [zoomMic])), "the next call is")
+    }
+
+    func testACallAlreadyGoingOnWhenThePolicyStartsIsNotJoined() {
+        // Lectern is opened, or automatic recording turned on, in the middle of a call
+        policy = AutoRecordPolicy()
+        policy.setEnabled(true, now: now)
+        XCTAssertTrue(run(300, [zoomMic]).isEmpty)
+        XCTAssertTrue(policy.suppressed)
+        XCTAssertTrue(run(31, []).isEmpty)
+        XCTAssertNotNil(started(run(5, [zoomMic])), "the next call is recorded")
+    }
+
+    func testOnlyACallThatLastedIsSureEnoughToProcess() {
+        run(5, [slackMic])
+        // a voice message: the microphone for half a minute, then the usual wait for the end
+        run(30, [slackMic])
+        XCTAssertTrue(policy.isBrief)
+        XCTAssertEqual(run(181, []).map(\.1), [.stop])
+        XCTAssertTrue(policy.isBrief, "still brief when the end is asked for")
+        policy.ended(.finished, now: now)
+
+        run(31, [])
+        run(5, [slackMic])
+        run(120, [slackMic])
+        XCTAssertFalse(policy.isBrief, "two minutes on the microphone is a call")
     }
 
     // MARK: browsers and apps that are asked about

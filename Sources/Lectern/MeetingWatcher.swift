@@ -96,6 +96,8 @@ final class MeetingWatcher {
                 Task { await model.recorder.start(course: nil, meeting: .init(title: title, automatic: start.recording)) }
                 if start.ask { showQuestion(about: start.app) }
             case .stop:
+                // too short to be sure it was a meeting: kept, its notes wait for the user
+                if policy.isBrief { model.recorder.holdAutomaticProcessing() }
                 Task { await model.recorder.stopAutomatic() }
             case .readTabs(let browsers, let token):
                 BrowserTabs.queue.async { [weak self] in

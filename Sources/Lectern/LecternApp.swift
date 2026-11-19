@@ -68,11 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A lecture keeps recording when the app quits. A meeting that began on its own is ended and
     /// added first: with the app gone nobody would notice that the call is over.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let recorder = AppModel.current?.recorder, recorder.automatic != nil, recorder.phase == .recording else {
+        guard let recorder = AppModel.current?.recorder, recorder.automatic != nil, !recorder.isIdle else {
             return .terminateNow
         }
         Task { @MainActor in
-            await recorder.stopAutomatic(quitting: true)
+            await recorder.settleAutomaticForQuit()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
@@ -258,8 +258,10 @@ private struct MenuBarPanel: View {
                     TextField(L("recording.addNote"), text: $draft)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { recorder.addNote(draft); draft = "" }
-                    Button { Task { await recorder.takeBreak() } } label: { Image(systemName: "pause.fill") }
-                        .help(L("recording.takeBreak"))
+                    if recorder.automatic == nil {
+                        Button { Task { await recorder.takeBreak() } } label: { Image(systemName: "pause.fill") }
+                            .help(L("recording.takeBreak"))
+                    }
                 }
                 Button(L("recording.stop")) { Task { await recorder.stop() } }
                     .buttonStyle(PillButtonStyle(kind: .danger))

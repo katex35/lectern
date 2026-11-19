@@ -37,7 +37,14 @@ public final class RecorderClient: @unchecked Sendable {
     /// True for a client that took over a helper another instance of the app started: it gets no
     /// events, so whoever holds it looks at `isRunning` now and then.
     public var isAttached: Bool { helper == nil }
-    public var isRunning: Bool { pid.map(Self.isAlive) ?? false }
+    /// True while the helper this client drives is still there. For a helper taken over after a
+    /// restart the process id is checked to still be that recorder every time: once it has exited,
+    /// the number may belong to any other program, and signals sent to it would hit that program.
+    public var isRunning: Bool {
+        if let process { return process.isRunning }
+        guard let pid else { return false }
+        return Self.isRecording(pid: pid, output: output)
+    }
 
     struct Line: Decodable {
         var event: String
@@ -85,7 +92,7 @@ public final class RecorderClient: @unchecked Sendable {
     /// the helper ends the recording itself: an automatic recording must not run on with nobody
     /// left to notice that the call is over.
     public func heartbeat() {
-        guard watched, let pid, !lock.withLock({ ended || stopRequested }) else { return }
+        guard watched, let pid, !lock.withLock({ ended || stopRequested }), isRunning else { return }
         kill(pid, SIGUSR1)
     }
 
@@ -184,19 +191,19 @@ public final class RecorderClient: @unchecked Sendable {
             defer { stopRequested = true }
             return !stopRequested
         }
-        if first { kill(pid, SIGINT) }
+        if first, isRunning { kill(pid, SIGINT) }
         if process == nil {
             // attached: no pipe to read, poll until the process is gone, then read the report
             let deadline = Date().addingTimeInterval(stopTimeout)
-            while Self.isAlive(pid), Date() < deadline {
+            while isRunning, Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             var r = sidecarReport()
-            if Self.isAlive(pid) {
+            if isRunning {
                 // still writing: nobody may treat the file as final while it does. It is ended for
                 // good; the next launch repairs the file up to its last fragment.
                 kill(pid, SIGKILL)
-                for _ in 0..<50 where Self.isAlive(pid) { try? await Task.sleep(nanoseconds: 100_000_000) }
+                for _ in 0..<50 where isRunning { try? await Task.sleep(nanoseconds: 100_000_000) }
                 r = Self.timedOut(r)
             }
             lock.withLock { finalReport = r }

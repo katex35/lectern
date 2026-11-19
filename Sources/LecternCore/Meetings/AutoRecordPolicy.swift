@@ -54,6 +54,8 @@ public struct AutoRecordPolicy: Sendable {
         public var tabTimeout: TimeInterval = 20
         /// The end is asked for again this often until the recording is reported over.
         public var stopRetry: TimeInterval = 10
+        /// A call whose app held the microphone for less than this in all is too short to be sure of.
+        public var briefCall: TimeInterval = 60
 
         public init() {}
     }
@@ -97,6 +99,8 @@ public struct AutoRecordPolicy: Sendable {
         var lastMeeting: Date
         var lastMic: Date
         var lastTabCheck = Date.distantPast
+        /// Seconds a meeting app was seen on the microphone during this recording.
+        var micSeconds = 0
         var pendingCheck: (token: Int, asked: Date)?
         /// When the end was last asked for. Asked again now and then: the recorder may have been busy.
         var stopAsked: Date?
@@ -118,6 +122,8 @@ public struct AutoRecordPolicy: Sendable {
     var rejectedSeen = Date.distantPast
     var wasBusy = false
     var token = 0
+    /// Nothing was observed yet since the policy was made or turned on.
+    var needsBaseline = true
 
     public init(timing: Timing = Timing()) {
         self.timing = timing
@@ -128,7 +134,16 @@ public struct AutoRecordPolicy: Sendable {
         guard on != enabled else { return }
         enabled = on
         pendingStart = nil
+        if on { needsBaseline = true }
         if on, let lastSeen, now.timeIntervalSince(lastSeen) < timing.rearmAfter { suppressed = true }
+    }
+
+    /// True when the call being recorded had its app on the microphone only briefly so far: a voice
+    /// message or a microphone opened by mistake looks like that. Such a recording is kept, but not
+    /// processed on its own.
+    public var isBrief: Bool {
+        guard let running else { return false }
+        return Double(running.micSeconds) < timing.briefCall
     }
 
     /// The app found a recording still running after a restart and governs it again.
@@ -181,6 +196,12 @@ public struct AutoRecordPolicy: Sendable {
             seenApp = nil
         }
         if inCall { lastSeen = now }
+        // The first look after starting up or being turned on: a call already going on then is not
+        // joined in the middle. The user can still record it by hand.
+        if needsBaseline {
+            needsBaseline = false
+            if inCall, running == nil { suppressed = true }
+        }
         // a recording made by hand has just ended: the call it belonged to is not picked up again
         if wasBusy, !recorderBusy, running == nil { suppressed = true }
         wasBusy = recorderBusy
@@ -199,7 +220,10 @@ public struct AutoRecordPolicy: Sendable {
         }
 
         var effects: [Effect] = []
-        if starter != nil { current.lastMic = now }
+        if starter != nil {
+            current.lastMic = now
+            current.micSeconds += 1
+        }
         if let check = current.pendingCheck, now.timeIntervalSince(check.asked) >= timing.tabTimeout { current.pendingCheck = nil }
         if inCall {
             current.lastMeeting = now

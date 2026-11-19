@@ -73,7 +73,8 @@ enum MeetingControl {
         center.addObserver(forName: request, object: nil, queue: .main) { [weak model] note in
             guard let id = note.object as? String, let command = note.userInfo?["command"] as? String else { return }
             Task { @MainActor in
-                guard let model else { return }
+                // a command that had to wake the app asks more than once: it is carried out once
+                guard let model, answered.insert(id).inserted else { return }
                 // heard: the command knows the app is there and waits for the result
                 center.postNotificationName(reply, object: id, userInfo: ["pending": "1"], deliverImmediately: true)
                 let failure = await perform(command, model)
@@ -83,6 +84,9 @@ enum MeetingControl {
             }
         }
     }
+
+    /// Requests already taken up, by their id.
+    @MainActor private static var answered = Set<String>()
 
     /// Returns what went wrong, nil when the command was carried out.
     @MainActor
@@ -116,6 +120,7 @@ enum MeetingControl {
             "running": true,
             "recording": recorder.phase == .recording,
             "automatic": model.meetings.enabled,
+            "window": NSApp.windows.contains { $0.canBecomeMain && $0.isVisible },
             // who has the microphone open right now, as the watcher sees it
             "microphone": AudioUsers.current().filter(\.input).map { $0.bundle.isEmpty ? $0.path : $0.bundle },
         ]
