@@ -35,6 +35,8 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Lectern looks at the address of the front tab to tell a meeting from any other page that uses the microphone. Addresses stay on this Mac.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Lectern records what your Mac plays during a meeting, so the notes cover both sides of the call.</string>
 	<key>NSMicrophoneUsageDescription</key>

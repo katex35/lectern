@@ -117,6 +117,24 @@ public final class Library: @unchecked Sendable {
         try JSONStore.write(session, to: folder(of: session).appendingPathComponent("session.json"))
     }
 
+    /// Marks a recording the user refused ("not a meeting") before it is stopped and thrown away, so a
+    /// crash in between cannot bring it back as a meeting: the next launch finishes the job.
+    public func markDiscarded(_ session: Session) {
+        fm.createFile(atPath: folder(of: session).appendingPathComponent(Self.discardMarker).path, contents: nil)
+    }
+
+    public func isDiscarded(_ session: Session) -> Bool {
+        fm.fileExists(atPath: folder(of: session).appendingPathComponent(Self.discardMarker).path)
+    }
+
+    /// Moves the session's folder to the Trash, or removes it where there is no Trash.
+    public func discard(_ session: Session) {
+        let folder = folder(of: session)
+        if (try? fm.trashItem(at: folder, resultingItemURL: nil)) == nil { try? fm.removeItem(at: folder) }
+    }
+
+    static let discardMarker = ".discarded"
+
     public func reload(_ session: Session) -> Session? {
         try? JSONStore.read(Session.self, from: folder(of: session).appendingPathComponent("session.json"))
     }

@@ -226,8 +226,13 @@
 "settings.meetings.title" = "Meetings";
 "settings.meetings.systemAudio" = "Record the computer's audio too";
 "settings.meetings.auto" = "Record meetings on their own";
-"settings.meetings.login" = "Open Lectern at login";
-"settings.meetings.footer" = "For the other side of a call macOS asks for permission once (System Settings > Privacy & Security > Screen & System Audio Recording). On its own, a recording starts when Zoom, Teams, FaceTime, Webex, Slack, Discord or Skype opens the microphone and ends when the call is over; Lectern has to be running.";
+"settings.login" = "Open Lectern at login";
+"settings.meetings.footer" = "For the other side of a call macOS asks for permission once (System Settings > Privacy & Security > Screen & System Audio Recording). On its own, a recording starts when a meeting app or a meeting in the browser opens the microphone and ends when the call is over; where Lectern cannot tell, it asks. Lectern has to be running.";
+"meeting.ask.title" = "Is this a meeting?";
+"meeting.ask.detail" = "%@ is using the microphone. Recording has started.";
+"meeting.ask.no" = "No, delete";
+"meeting.ask.yes" = "Yes, keep recording";
+"meeting.added.unprocessed" = "For notes, open the recording and press “%@”.";
 "meeting.titled" = "%@ meeting";
 "meeting.added.title" = "Meeting recorded";
 "meeting.added.show" = "Show in Finder";

@@ -34,6 +34,13 @@ final class MeetingWatcher {
         enabled = on
         policy.setEnabled(on, now: Date())
         refreshTimer()
+        // Reading a browser's tabs needs the user's leave, asked once per browser. Better now, for the
+        // browsers that are open, than in the first seconds of a meeting.
+        if on {
+            BrowserTabs.queue.async {
+                BrowserTabs.running(MeetingApps.browsers).forEach(BrowserTabs.askOnce)
+            }
+        }
     }
 
     /// The timer runs while there is something to watch for, or a recording of ours to end.
@@ -82,12 +89,22 @@ final class MeetingWatcher {
         for effect in effects {
             switch effect {
             case .start(let start):
-                let title = L("meeting.titled", start.service ?? start.app.name)
+                // "Meet meeting" for a known page, "Zoom meeting" for an app of its own, "Meeting" for a
+                // browser showing something unknown
+                let title = start.service.map { L("meeting.titled", $0) }
+                    ?? (start.app.browsers.isEmpty && start.app.id != "firefox" ? L("meeting.titled", start.app.name) : L("meeting.untitled"))
                 Task { await model.recorder.start(course: nil, meeting: .init(title: title, automatic: start.recording)) }
+                if start.ask { showQuestion(about: start.app) }
             case .stop:
                 Task { await model.recorder.stopAutomatic() }
-            case .readTabs(_, let token):
-                perform(policy.tabsRead(token: token, found: nil, recorderBusy: busy, now: Date()))
+            case .readTabs(let browsers, let token):
+                BrowserTabs.queue.async { [weak self] in
+                    let found = BrowserTabs.meeting(in: BrowserTabs.running(browsers))
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.perform(self.policy.tabsRead(token: token, found: found, recorderBusy: self.busy, now: Date()))
+                    }
+                }
             }
         }
     }
@@ -95,6 +112,8 @@ final class MeetingWatcher {
     private func ended(_ how: AutoRecordPolicy.End, _ session: Session?) {
         policy.ended(how, now: Date())
         refreshTimer()
+        // a question about a recording that is over has no use
+        closePanel()
         guard let model, let session, let recording = session.recordings.last, (recording.duration ?? 0) > 0 else { return }
         switch how {
         case .stoppedByUser:
@@ -126,11 +145,33 @@ final class MeetingWatcher {
         panel = nil
     }
 
+    /// The microphone does not always mean a meeting. The recording has begun, so nothing is lost
+    /// while the user decides; without an answer it goes on and waits to be processed by hand.
+    private func showQuestion(about app: MeetingApp) {
+        show(Self.questionNotice(app: app.name, no: { [weak self] in
+            self?.closePanel()
+            Task { await self?.model?.recorder.discardAutomatic() }
+        }, yes: { [weak self] in
+            self?.policy.confirm()
+            self?.model?.recorder.confirmAutomatic()
+            self?.closePanel()
+        }), for: 60)
+    }
+
+    static func questionNotice(app: String, no: @escaping () -> Void, yes: @escaping () -> Void) -> MeetingNotice {
+        // a question, not an alarm: red stays with recording
+        MeetingNotice(symbol: "questionmark.circle.fill", tint: Theme.ink, title: L("meeting.ask.title"),
+                      detail: L("meeting.ask.detail", app),
+                      secondary: .init(title: L("meeting.ask.no"), run: no),
+                      primary: .init(title: L("meeting.ask.yes"), run: yes))
+    }
+
     /// The recording is in the library: its name and length, the file in Finder, its page in Lectern.
     private func showAdded(_ session: Session, recording: RecordingInfo) {
         guard let model else { return }
         let file = model.library.folder(of: session).appendingPathComponent(recording.file)
-        show(Self.addedNotice(title: session.title, duration: recording.duration ?? 0, show: { [weak self] in
+        show(Self.addedNotice(title: session.title, duration: recording.duration ?? 0,
+                              unprocessed: recording.automatic?.confirmed == false, show: { [weak self] in
             NSWorkspace.shared.activateFileViewerSelecting([file])
             self?.closePanel()
         }, open: { [weak self] in
@@ -140,17 +181,21 @@ final class MeetingWatcher {
         }), for: 20)
     }
 
-    static func addedNotice(title: String, duration: TimeInterval, show: @escaping () -> Void,
+    static func addedNotice(title: String, duration: TimeInterval, unprocessed: Bool = false, show: @escaping () -> Void,
                             open: @escaping () -> Void) -> MeetingNotice {
-        MeetingNotice(symbol: "checkmark.circle.fill", tint: Color(hex: 0x10B981), title: L("meeting.added.title"),
-                      detail: "\(title) · \(duration.clock)",
+        // nobody said it was a meeting: nothing was sent anywhere, notes wait for the user
+        let detail = "\(title) · \(RelativeTime.duration(duration))" + (unprocessed ? "\n" + L("meeting.added.unprocessed", L("process.start")) : "")
+        return MeetingNotice(symbol: "checkmark.circle.fill", tint: Color(hex: 0x10B981), title: L("meeting.added.title"),
+                      detail: detail,
                       secondary: .init(title: L("meeting.added.show"), run: show),
                       primary: .init(title: L("meeting.added.open"), run: open))
     }
 
     /// The panels with made-up content, for the development screenshots.
     static var sampleNotices: [(name: String, notice: MeetingNotice)] {
-        [("added", addedNotice(title: L("meeting.titled", "Zoom"), duration: 2531, show: {}, open: {}))]
+        [("added", addedNotice(title: L("meeting.titled", "Zoom"), duration: 2531, show: {}, open: {})),
+         ("added-unprocessed", addedNotice(title: L("meeting.untitled"), duration: 754, unprocessed: true, show: {}, open: {})),
+         ("question", questionNotice(app: "Chrome", no: {}, yes: {}))]
     }
 }
 

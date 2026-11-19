@@ -23,6 +23,7 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
     @Environment(AppModel.self) private var model
+    @State private var atLogin = LoginItem.isOn
 
     var body: some View {
         Form {
@@ -40,6 +41,13 @@ private struct GeneralPane: View {
                 Text(Locale.current.localizedString(forLanguageCode: Locale.current.language.languageCode?.identifier ?? "en") ?? "")
                     .foregroundStyle(Theme.secondary)
             }
+            // with the app's own settings: it is about Lectern, whatever it is opened for
+            Toggle(L("settings.login"), isOn: $atLogin)
+                .disabled(!LoginItem.isAvailable)
+                .onChange(of: atLogin) {
+                    // macOS may refuse: the switch then shows what is true
+                    if LoginItem.set(atLogin) != atLogin { atLogin = LoginItem.isOn }
+                }
             NotesSection()
             SemesterSection()
             MeetingSection()
@@ -94,7 +102,6 @@ private struct NotesSection: View {
 private struct MeetingSection: View {
     @Environment(AppModel.self) private var model
     @AppStorage(MeetingSettings.systemAudioKey) private var systemAudio = true
-    @State private var atLogin = LoginItem.isOn
 
     var body: some View {
         Section {
@@ -103,12 +110,6 @@ private struct MeetingSection: View {
             Toggle(L("settings.meetings.auto"), isOn: Binding(get: { model.meetings.enabled },
                                                              set: { model.meetings.setEnabled($0) }))
                 .disabled(!MeetingSettings.canAutoRecord)
-            Toggle(L("settings.meetings.login"), isOn: $atLogin)
-                .disabled(!LoginItem.isAvailable)
-                .onChange(of: atLogin) {
-                    // macOS may refuse: the switch then shows what is true
-                    if LoginItem.set(atLogin) != atLogin { atLogin = LoginItem.isOn }
-                }
         } header: {
             Text(L("settings.meetings.title"))
         } footer: {

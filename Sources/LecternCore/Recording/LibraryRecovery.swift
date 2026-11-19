@@ -8,6 +8,7 @@ extension Library {
     ///
     /// - A recording still marked as in progress whose recorder is gone is repaired up to its last
     ///   fragment and closed. One whose recorder is still writing is left alone.
+    /// - A meeting the user refused ("not a meeting") that was not thrown away yet goes to the Trash.
     /// - A recording that ended with a problem and is still in fragments is repaired.
     /// - Computer audio recorded next to a recording and not mixed in yet is mixed in.
     /// - The hidden copies of a mixed meeting are removed once all of them are older than `trackLifetime`.
@@ -19,6 +20,17 @@ extension Library {
         let all = courses().flatMap { sessions(ofCourse: $0.id) } + meetings()
         for session in all {
             let folder = folder(of: session)
+            if isDiscarded(session) {
+                let writing = session.recordings.contains { recording in
+                    recording.recorderPID.map { RecorderClient.isRecording(pid: $0, output: folder.appendingPathComponent(recording.file)) } ?? false
+                }
+                // a recorder still writing it is taken over and stopped by the app first
+                if !writing {
+                    discard(session)
+                    changed += 1
+                }
+                continue
+            }
             // what this pass found out, by file name; the session is read again before it is saved
             var recovered: [String: RecordingInfo] = [:]
             var neverStarted: Set<String> = []

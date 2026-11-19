@@ -53,7 +53,34 @@ public enum MeetingApps {
         .init(id: "slack", name: "Slack", bundles: ["com.tinyspeck.slackmacgap"], paths: ["/Slack.app/"]),
         .init(id: "discord", name: "Discord", bundles: ["com.hnc.Discord"], paths: ["/Discord.app/"]),
         .init(id: "skype", name: "Skype", bundles: ["com.skype."], paths: ["/Skype.app/"]),
+        // a voice message also opens the microphone: these are asked about
+        .init(id: "whatsapp", name: "WhatsApp", bundles: ["net.whatsapp.WhatsApp", "desktop.WhatsApp"], paths: ["/WhatsApp.app/"],
+              ask: true),
+        .init(id: "telegram", name: "Telegram", bundles: ["ru.keepcoder.Telegram", "org.telegram."], paths: ["/Telegram.app/"],
+              ask: true),
+        // browsers: a known meeting in the front tab needs no question, anything else is asked about
+        .init(id: "chrome", name: "Chrome", bundles: ["com.google.Chrome"], paths: ["/Google Chrome.app/"], ask: true,
+              browsers: ["com.google.Chrome"]),
+        .init(id: "safari", name: "Safari", bundles: ["com.apple.Safari", "com.apple.WebKit.GPU"],
+              paths: ["/Safari.app/", "com.apple.WebKit.GPU"], ask: true, browsers: ["com.apple.Safari"]),
+        .init(id: "arc", name: "Arc", bundles: ["company.thebrowser."], paths: ["/Arc.app/", "/Dia.app/"], ask: true,
+              browsers: ["company.thebrowser.Browser", "company.thebrowser.dia"]),
+        .init(id: "edge", name: "Edge", bundles: ["com.microsoft.edgemac"], paths: ["/Microsoft Edge.app/"], ask: true,
+              browsers: ["com.microsoft.edgemac"]),
+        .init(id: "brave", name: "Brave", bundles: ["com.brave.Browser"], paths: ["/Brave Browser.app/"], ask: true,
+              browsers: ["com.brave.Browser"]),
+        .init(id: "opera", name: "Opera", bundles: ["com.operasoftware."], paths: ["/Opera.app/"], ask: true,
+              browsers: ["com.operasoftware.Opera"]),
+        .init(id: "vivaldi", name: "Vivaldi", bundles: ["com.vivaldi."], paths: ["/Vivaldi.app/"], ask: true,
+              browsers: ["com.vivaldi.Vivaldi"]),
+        .init(id: "comet", name: "Comet", bundles: ["ai.perplexity.comet"], paths: ["/Comet.app/"], ask: true,
+              browsers: ["ai.perplexity.comet"]),
+        // Firefox does not give its tabs away: always asked about
+        .init(id: "firefox", name: "Firefox", bundles: ["org.mozilla."], paths: ["/Firefox.app/"], ask: true),
     ]
+
+    /// Every browser whose tabs can be read.
+    public static var browsers: [String] { all.flatMap(\.browsers) }
 
     public static func app(for user: AudioUser) -> MeetingApp? {
         all.first { app in

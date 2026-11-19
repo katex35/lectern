@@ -1,2 +1,3 @@
 "NSMicrophoneUsageDescription" = "Lectern records your lectures and meetings so it can write notes from them.";
 "NSAudioCaptureUsageDescription" = "Lectern records what your Mac plays during a meeting, so the notes cover both sides of the call.";
+"NSAppleEventsUsageDescription" = "Lectern looks at the address of the front tab to tell a meeting from any other page that uses the microphone. Addresses stay on this Mac.";

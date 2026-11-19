@@ -253,6 +253,26 @@ final class MeetingTrackTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
     }
 
+    func testARefusedMeetingIsThrownAwayAtLaunchEvenIfTheAppDiedFirst() async throws {
+        let library = Library(root: folder)
+        var refused = try library.newMeeting(title: "Voice message", date: Date())
+        let file = library.folder(of: refused).appendingPathComponent("recording-100000.m4a")
+        await track(file, duration: 2)
+        var info = RecordingInfo(file: file.lastPathComponent, start: Date(), inProgress: true)
+        info.recorderPID = 1
+        refused.recordings = [info]
+        try library.save(refused)
+        let kept = try library.newMeeting(title: "Standup", date: Date().addingTimeInterval(-3600))
+        // the user said "not a meeting", then the app died before the folder was gone
+        library.markDiscarded(refused)
+        XCTAssertTrue(library.isDiscarded(refused))
+
+        let changed = await library.recoverRecordings()
+        XCTAssertEqual(changed, 1)
+        XCTAssertEqual(library.meetings().map(\.id), [kept.id], "the refused one never comes back as a meeting")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.folder(of: refused).path))
+    }
+
     func testARecordingStillBeingWrittenIsLeftAlone() async throws {
         let helper = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("lectern-recorder")
         try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: helper.path), "helper not built at \(helper.path)")

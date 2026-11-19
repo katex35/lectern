@@ -23,7 +23,9 @@ enum Snapshots {
         window.center()
         await pause(1.6)
         if let seconds = ProcessInfo.processInfo.environment["LECTERN_MEETING_CHECK"].flatMap(Double.init) {
+            await tabs(folder: folder)
             await meeting(model, window: window, folder: folder, seconds: seconds)
+            await refusal(model, folder: folder)
             NSApp.terminate(nil)
             return
         }
@@ -179,6 +181,38 @@ enum Snapshots {
         await pause(1.2)
         save(window, to: folder.appendingPathComponent("5-no-sidebar.png"))
         NSApp.terminate(nil)
+    }
+
+    /// A recording that began on its own and was answered with "not a meeting": nothing of it may
+    /// stay in the library. The outcome goes into `refused.txt`.
+    private static func refusal(_ model: AppModel, folder: URL) async {
+        let before = Set(model.library.meetings().map(\.id))
+        await model.recorder.start(course: nil, meeting: .init(title: "Refused", automatic: AutomaticRecording(app: "test", confirmed: false)))
+        await pause(2)
+        let recorded = model.recorder.session.map { model.library.folder(of: $0) }
+        await model.recorder.discardAutomatic()
+        await pause(0.5)
+        let after = Set(model.library.meetings().map(\.id))
+        let gone = recorded.map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let lines = ["recorded: \(recorded != nil)", "folder gone: \(gone)", "library unchanged: \(before == after)",
+                     "recorder idle: \(model.recorder.isIdle)"]
+        try? lines.joined(separator: "\n").write(to: folder.appendingPathComponent("refused.txt"), atomically: true, encoding: .utf8)
+    }
+
+    /// Which of the open browsers let their front tabs be read, and whether one shows a meeting.
+    /// Addresses are not written down.
+    private static func tabs(folder: URL) async {
+        let lines: [String] = await withCheckedContinuation { continuation in
+            BrowserTabs.queue.async {
+                continuation.resume(returning: BrowserTabs.running(MeetingApps.browsers).map { bundle in
+                    let allowed = BrowserTabs.permission(for: bundle, ask: true)
+                    let addresses = BrowserTabs.frontAddresses(of: bundle)
+                    let meeting = BrowserTabs.meeting(in: [bundle])?.service ?? "none"
+                    return "\(bundle): permission \(allowed), windows read \(addresses.map { String($0.count) } ?? "no"), meeting \(meeting)"
+                })
+            }
+        }
+        try? lines.joined(separator: "\n").write(to: folder.appendingPathComponent("tabs.txt"), atomically: true, encoding: .utf8)
     }
 
     /// A meeting: the microphone with what the Mac plays next to it, mixed when it stops.

@@ -105,6 +105,7 @@ final class AppModel {
         // never closed, computer audio not mixed in yet) is finished
         let adopted = recorder.adoptRunningRecording()
         meetings.start(self, adopted: adopted)
+        MeetingControl.listen(self)
         Task {
             if await library.recoverRecordings() > 0 { reload() }
         }
@@ -397,6 +398,12 @@ final class RecordingController {
                 automatic = recording.automatic
                 startedAt = recording.start
                 notes = session.markers.filter { $0.recording == recording.file }
+                if model.library.isDiscarded(session), automatic != nil {
+                    // refused before the last run ended: finish throwing it away
+                    phase = .recording
+                    Task { await discardAutomatic() }
+                    return nil
+                }
                 client.heartbeat()
                 startTicking()
                 phase = .recording
@@ -562,8 +569,17 @@ final class RecordingController {
         guard automatic != nil, phase == .recording else { return }
         phase = .stopping
         if quitting { automatic?.confirmed = false }
+        // written down before anything else: a crash from here on must not bring a refused recording back
+        if endedBy == .rejected, let session { model?.library.markDiscarded(session) }
         await finishRecording()
         close()
+    }
+
+    /// The answer to "Is this a meeting?" was no: the recording ends and goes to the Trash.
+    func discardAutomatic() async {
+        guard automatic != nil else { return }
+        endedBy = .rejected
+        await stopAutomatic()
     }
 
     /// The answer to "Is this a meeting?" was yes: the recording is processed like any other.
@@ -579,7 +595,7 @@ final class RecordingController {
     }
 
     func stop() async {
-        if automatic != nil { endedBy = .stoppedByUser }
+        if automatic != nil, endedBy != .rejected { endedBy = .stoppedByUser }
         switch phase {
         case .onBreak:
             close()
@@ -609,8 +625,16 @@ final class RecordingController {
         let wasAutomatic = automatic, how = endedBy
         automatic = nil
         endedBy = .finished
-        model?.reload()
         var closed: Session?
+        if how == .rejected, wasAutomatic != nil, let finished, let model {
+            // "not a meeting": nothing of it stays in the library
+            model.library.discard(finished)
+            session = nil
+            model.reload()
+            onAutomaticEnd?(how, nil)
+            return
+        }
+        model?.reload()
         if let finished, let model {
             let fresh = model.library.reload(finished) ?? finished
             closed = fresh

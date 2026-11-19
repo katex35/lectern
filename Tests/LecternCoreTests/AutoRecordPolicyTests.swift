@@ -137,6 +137,131 @@ final class AutoRecordPolicyTests: XCTestCase {
         XCTAssertNotNil(started(run(5, [zoomMic])), "the next call is")
     }
 
+    // MARK: browsers and apps that are asked about
+
+    let chromeMic = AudioUser(bundle: "com.google.Chrome.helper", input: true, output: true)
+    let chromeSound = AudioUser(bundle: "com.google.Chrome.helper", input: false, output: true)
+    let whatsappMic = AudioUser(bundle: "net.whatsapp.WhatsApp", input: true)
+    let firefoxMic = AudioUser(bundle: "org.mozilla.firefox", input: true)
+    let meet = MeetingTab(service: "Meet", browser: "com.google.Chrome")
+
+    /// The token of the tab reading asked for, if one was.
+    func tabsAsked(_ effects: [(Int, AutoRecordPolicy.Effect)]) -> (browsers: [String], token: Int)? {
+        for (_, effect) in effects { if case .readTabs(let browsers, let token) = effect { return (browsers, token) } }
+        return nil
+    }
+
+    func answer(_ token: Int, _ found: MeetingTab?) -> AutoRecordPolicy.Start? {
+        for effect in policy.tabsRead(token: token, found: found, recorderBusy: busy, now: now) {
+            if case .start(let start) = effect { return start }
+        }
+        return nil
+    }
+
+    func testABrowserOnTheMicrophoneHasItsTabsReadFirst() throws {
+        let asked = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        XCTAssertEqual(asked.browsers, ["com.google.Chrome"])
+        XCTAssertNil(policy.current, "nothing starts before the tabs are known")
+        XCTAssertTrue(run(3, [chromeMic]).isEmpty, "and the tabs are not asked for again meanwhile")
+        let start = try XCTUnwrap(answer(asked.token, meet))
+        XCTAssertEqual(start.service, "Meet")
+        XCTAssertFalse(start.ask)
+        XCTAssertTrue(start.recording.confirmed)
+        XCTAssertEqual(start.recording.keepAlive, ["com.google.Chrome"])
+    }
+
+    func testAnUnknownPageStartsAndAsks() throws {
+        let asked = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        let start = try XCTUnwrap(answer(asked.token, nil))
+        XCTAssertNil(start.service)
+        XCTAssertTrue(start.ask)
+        XCTAssertFalse(start.recording.confirmed, "not processed on its own until the user says yes")
+        policy.confirm()
+        XCTAssertEqual(policy.current?.confirmed, true)
+    }
+
+    func testAppsWithoutReadableTabsAreAskedAboutAtOnce() {
+        XCTAssertEqual(started(run(5, [whatsappMic]))?.ask, true)
+        policy.ended(.rejected, now: now)
+        run(60, [])
+        XCTAssertEqual(started(run(5, [firefoxMic]))?.ask, true)
+    }
+
+    func testAnAppOfItsOwnComesBeforeABrowser() {
+        let start = started(run(5, [chromeMic, zoomMic]))
+        XCTAssertEqual(start?.app.id, "zoom")
+        XCTAssertEqual(start?.ask, false)
+    }
+
+    func testALateTabAnswerStartsNothingAfterTheMicrophoneWasReleased() throws {
+        let asked = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        run(2, [])
+        XCTAssertNil(answer(asked.token, meet))
+        // nor when it comes back after a lecture began
+        let again = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        busy = true
+        XCTAssertNil(answer(again.token, meet))
+        XCTAssertNil(policy.current)
+    }
+
+    func testATabReadingThatNeverComesBackIsGivenUp() throws {
+        XCTAssertNotNil(tabsAsked(run(5, [chromeMic])))
+        XCTAssertNotNil(tabsAsked(run(21, [chromeMic])), "asked for again once the first one timed out")
+    }
+
+    func testNotAMeetingIsNotRecordedAgainUntilTheAppLetsGoOfTheMicrophone() throws {
+        XCTAssertEqual(started(run(5, [whatsappMic]))?.ask, true)
+        policy.ended(.rejected, now: now)
+        XCTAssertTrue(run(120, [whatsappMic]).isEmpty, "the same voice message goes on")
+        // another app is not held back by that answer
+        XCTAssertEqual(started(run(5, [whatsappMic, zoomMic]))?.app.id, "zoom")
+        policy.ended(.finished, now: now)
+        XCTAssertTrue(run(31, []).isEmpty)
+        XCTAssertEqual(started(run(5, [whatsappMic]))?.app.id, "whatsapp", "half a minute after it let go it counts again")
+    }
+
+    /// Ticks second by second and answers every tab reading at once, as a browser does. Returns how
+    /// often the tabs were read and the second the end was first asked for.
+    func runAnswering(_ seconds: Int, _ users: [AudioUser], tab: MeetingTab?) -> (reads: Int, stoppedAt: Int?) {
+        var reads = 0
+        var stoppedAt: Int?
+        for second in 1...seconds {
+            for (_, effect) in run(1, users) {
+                if case .readTabs(let browsers, let token) = effect {
+                    XCTAssertEqual(browsers, ["com.google.Chrome"])
+                    reads += 1
+                    _ = policy.tabsRead(token: token, found: tab, recorderBusy: false, now: now)
+                } else if effect == .stop, stoppedAt == nil {
+                    stoppedAt = second
+                }
+            }
+        }
+        return (reads, stoppedAt)
+    }
+
+    func testAMutedMeetingInTheBrowserGoesOnWhileItsTabIsInFront() throws {
+        let asked = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        XCTAssertNotNil(answer(asked.token, meet))
+        // muted: Chrome lets go of the microphone but still plays the others
+        let muted = runAnswering(600, [chromeSound], tab: meet)
+        XCTAssertNil(muted.stoppedAt, "ten minutes muted must not end the recording")
+        XCTAssertEqual(muted.reads, 40, "the tab is looked at every fifteen seconds")
+        // the tab is closed (music goes on in another one): three minutes after it was last seen the recording ends
+        let closed = runAnswering(300, [chromeSound], tab: nil)
+        let stopped = try XCTUnwrap(closed.stoppedAt)
+        XCTAssertGreaterThanOrEqual(stopped, 165)
+        XCTAssertLessThanOrEqual(stopped, 181)
+    }
+
+    func testATabKeepsAMutedMeetingForAnHourAtMost() throws {
+        let asked = try XCTUnwrap(tabsAsked(run(5, [chromeMic])))
+        XCTAssertNotNil(answer(asked.token, meet))
+        let stopped = try XCTUnwrap(runAnswering(4200, [chromeSound], tab: meet).stoppedAt)
+        // an hour without the microphone, then the usual three minutes
+        XCTAssertGreaterThan(stopped, 3600)
+        XCTAssertLessThanOrEqual(stopped, 3600 + 181)
+    }
+
     func testARecordingTakenOverAfterARestartStillEndsWithTheCall() {
         policy.adopt(AutomaticRecording(app: "zoom"), now: now)
         XCTAssertTrue(run(300, [zoomMic]).isEmpty)

@@ -1,2 +1,3 @@
 "NSMicrophoneUsageDescription" = "Lectern derslerini ve toplantılarını kaydeder, notları bu kayıttan yazar.";
 "NSAudioCaptureUsageDescription" = "Lectern toplantıda Mac'inden çıkan sesi kaydeder; notlar görüşmenin iki tarafını da kapsar.";
+"NSAppleEventsUsageDescription" = "Lectern öndeki sekmenin adresine bakar; böylece toplantıyı mikrofonu kullanan başka sayfalardan ayırır. Adresler bu Mac'ten çıkmaz.";

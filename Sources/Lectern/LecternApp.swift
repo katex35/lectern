@@ -2,7 +2,6 @@ import AppKit
 import LecternCore
 import SwiftUI
 
-@main
 struct LecternApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel(library: AppModel.defaultLibrary())
