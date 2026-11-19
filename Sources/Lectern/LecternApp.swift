@@ -50,7 +50,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // started with `swift run` there is no bundle telling macOS this is a regular app
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // opened at login (to record meetings on their own) Lectern stays in the menu bar: no window
+        // and no jump to the front. `--background` asks for the same by hand.
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let atLogin = event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if atLogin || CommandLine.arguments.contains("--background") {
+            for delay in [0.0, 0.3, 1.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard !NSApp.isActive else { return }
+                    NSApp.windows.filter { $0.canBecomeMain && $0.isVisible }.forEach { $0.orderOut(nil) }
+                }
+            }
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// A lecture keeps recording when the app quits. A meeting that began on its own is ended and
+    /// added first: with the app gone nobody would notice that the call is over.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let recorder = AppModel.current?.recorder, recorder.automatic != nil, recorder.phase == .recording else {
+            return .terminateNow
+        }
+        Task { @MainActor in
+            await recorder.stopAutomatic(quitting: true)
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     /// Notices are planned a week ahead; coming back to the app moves that week along.
@@ -107,6 +133,10 @@ struct RootView: View {
             if model.searching {
                 SearchPanel().transition(.opacity)
             }
+        }
+        // recordings that arrived while the app was in the background (another recorder, a synced folder)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if !model.recorder.isActive { model.reload() }
         }
         .task { await Snapshots.runIfRequested(model, openSettings: openSettings) }
     }
@@ -241,12 +271,17 @@ private struct MenuBarPanel: View {
                 Button(L("home.record")) { model.record(nil) }
                     .buttonStyle(PillButtonStyle(kind: .primary))
             }
-            Button(L("menu.openWindow")) {
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            if MeetingSettings.canAutoRecord {
+                Toggle(L("settings.meetings.auto"), isOn: Binding(get: { model.meetings.enabled },
+                                                                 set: { model.meetings.setEnabled($0) }))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.secondary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.secondary)
+            Button(L("menu.openWindow")) { AppWindow.bringForward() }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.secondary)
         }
         .padding(14)
         .frame(width: 320)

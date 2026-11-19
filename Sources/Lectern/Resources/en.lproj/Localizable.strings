@@ -219,3 +219,17 @@
 "exam.restart" = "New round";
 "exam.toQuestion" = "Back to the question";
 "exam.showAnswer" = "Show the answer";
+
+"recording.sources.both" = "Microphone and computer audio";
+"recording.sources.micOnly" = "Computer audio is not being recorded";
+"notice.systemAudio.missing" = "Computer audio was not recorded";
+"settings.meetings.title" = "Meetings";
+"settings.meetings.systemAudio" = "Record the computer's audio too";
+"settings.meetings.auto" = "Record meetings on their own";
+"settings.meetings.login" = "Open Lectern at login";
+"settings.meetings.footer" = "For the other side of a call macOS asks for permission once (System Settings > Privacy & Security > Screen & System Audio Recording). On its own, a recording starts when Zoom, Teams, FaceTime, Webex, Slack, Discord or Skype opens the microphone and ends when the call is over; Lectern has to be running.";
+"meeting.titled" = "%@ meeting";
+"meeting.added.title" = "Meeting recorded";
+"meeting.added.show" = "Show in Finder";
+"meeting.added.open" = "Open in Lectern";
+"settings.meetings.unsupported" = "Needs macOS 14.2 or later.";

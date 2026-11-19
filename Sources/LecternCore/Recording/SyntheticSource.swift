@@ -12,6 +12,9 @@ struct SyntheticSource {
     var stalls: [(Double, Double)] = []
     var realTime = false
     var inputFile: AVAudioFile?
+    /// Moves the beep this far into every second (a second track is told apart by it).
+    var beepOffset = 0.0
+    var amplitude = 0.5
 
     func run(_ pipeline: AudioPipeline) {
         let n = 512
@@ -25,6 +28,7 @@ struct SyntheticSource {
         pipeline.stalled = { t in stalls.contains { t - origin >= $0.0 && t - origin < $0.0 + $0.1 } }
         pipeline.deviceName = "synthetic"
         let gaps = self.gaps, duration = self.duration, realTime = self.realTime, file = inputFile
+        let beepOffset = self.beepOffset, amplitude = self.amplitude
 
         func buffer(at t: Double) -> AVAudioPCMBuffer {
             let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n))!
@@ -42,7 +46,8 @@ struct SyntheticSource {
             let v = pcm.floatChannelData![0]
             for i in 0..<n {
                 let ti = t + Double(i) / sr
-                v[i] = ti - floor(ti) < 0.1 ? Float(0.5 * sin(2 * Double.pi * 1000 * ti)) : 0
+                let inSecond = (ti - beepOffset) - floor(ti - beepOffset)
+                v[i] = inSecond < 0.1 ? Float(amplitude * sin(2 * Double.pi * 1000 * ti)) : 0
             }
             return pcm
         }

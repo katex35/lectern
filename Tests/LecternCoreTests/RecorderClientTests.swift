@@ -87,6 +87,61 @@ final class RecorderClientTests: XCTestCase {
         XCTAssertEqual(try duration(url), 2, accuracy: 0.15)
     }
 
+    func testRecordsTheComputerNextToTheMicrophoneAndMixesThemWhenStopped() async throws {
+        let url = folder.appendingPathComponent("recording-100000.m4a")
+        let client = RecorderClient(helper: helper, output: url)
+        let heard = Counter()
+        client.onEvent = { if case .systemAudioStarted = $0 { heard.add() } }
+        _ = try await client.start(simulate: 60, systemAudio: true)
+        try await Task.sleep(nanoseconds: 3_300_000_000)
+        let report = await client.stop()
+        XCTAssertEqual(report?.status, .finished, report?.error ?? "")
+        XCTAssertEqual(report?.systemAudio?.status, .mixed, report?.systemAudio?.error ?? "")
+        XCTAssertEqual(heard.value, 1)
+        XCTAssertEqual(client.sidecarReport()?.systemAudio?.status, .mixed, "the report on disk says the same")
+        // the microphone alone stays next to the mix, which is as long as it
+        let alone = RecordingTracks.microphone(for: url)
+        XCTAssertEqual(try duration(url), try duration(alone), accuracy: 0.1)
+        XCTAssertFalse(TrackMerger.isPending(url))
+        // the microphone beeps on its whole seconds, the computer half a second later: twice as many beeps
+        let file = try AVAudioFile(forReading: url)
+        let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
+        try file.read(into: buffer)
+        let x = buffer.floatChannelData![0]
+        var onsets: [Double] = []
+        var quiet = Int(file.processingFormat.sampleRate)
+        for i in 0..<Int(buffer.frameLength) {
+            if abs(x[i]) > 0.03 {
+                if quiet > Int(0.1 * file.processingFormat.sampleRate) { onsets.append(Double(i) / file.processingFormat.sampleRate) }
+                quiet = 0
+            } else {
+                quiet += 1
+            }
+        }
+        XCTAssertGreaterThanOrEqual(onsets.count, 5, "\(onsets)")
+        let gaps = zip(onsets.dropFirst(), onsets).map { $0 - $1 }
+        for gap in gaps { XCTAssertEqual(gap, 0.5, accuracy: 0.12, "beeps at \(onsets)") }
+    }
+
+    func testAHelperThatDoesNotFinishIsEndedBeforeStopReturns() async throws {
+        // a stand-in that says it is ready and then ignores every request to stop
+        let stubborn = folder.appendingPathComponent("stubborn-recorder")
+        try Data("#!/bin/sh\ntrap '' INT TERM\necho '{\"event\":\"ready\"}'\nwhile :; do sleep 1; done\n".utf8).write(to: stubborn)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stubborn.path)
+        let client = RecorderClient(helper: stubborn, output: folder.appendingPathComponent("recording.m4a"))
+        client.stopTimeout = 0.5
+        _ = try await client.start()
+        let pid = try XCTUnwrap(client.pid)
+        let began = Date()
+        let report = await client.stop()
+        XCTAssertLessThan(Date().timeIntervalSince(began), 8, "Stop must not wait forever")
+        XCTAssertEqual(report?.status, .failed)
+        XCTAssertNotNil(report?.error)
+        // nobody is left writing the file the caller now treats as closed
+        for _ in 0..<30 where RecorderClient.isAlive(pid) { try await Task.sleep(nanoseconds: 100_000_000) }
+        XCTAssertFalse(RecorderClient.isAlive(pid))
+    }
+
     func testStartFailsCleanlyForAnExistingFile() async throws {
         let url = folder.appendingPathComponent("recording.m4a")
         try Data("old".utf8).write(to: url)

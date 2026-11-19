@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import LecternCore
 import Observation
@@ -53,6 +54,7 @@ final class AppModel {
     let recorder = RecordingController()
     let processing = ProcessingCenter()
     let chat = ChatCenter()
+    let meetings = MeetingWatcher()
     private(set) var courses: [Course] = []
     /// Every lecture and meeting, newest first.
     private(set) var sessions: [Session] = []
@@ -77,8 +79,12 @@ final class AppModel {
     /// The service that writes notes, read from the keychain at launch and after Settings change it.
     private(set) var noteModelName = ""
 
+    /// The model of this run, for the app delegate (quitting ends an automatic recording first).
+    static weak var current: AppModel?
+
     init(library: Library) {
         self.library = library
+        Self.current = self
         recorder.model = self
         processing.model = self
         chat.model = self
@@ -95,6 +101,13 @@ final class AppModel {
         if library.completeDurations(sessions) > 0 { reload() }
         refreshAccounts()
         Reminders.shared.start(self)
+        // a recorder that outlived the last run is taken over; what a crash left behind (recordings
+        // never closed, computer audio not mixed in yet) is finished
+        let adopted = recorder.adoptRunningRecording()
+        meetings.start(self, adopted: adopted)
+        Task {
+            if await library.recoverRecordings() > 0 { reload() }
+        }
         // courses that came in without a cover get one now that an account may draw it
         Task { await Covers.drawMissing(model: self) }
     }
@@ -316,6 +329,24 @@ final class RecordingController {
     /// Recent loudness, 0...1, oldest first.
     private(set) var levels: [CGFloat] = Array(repeating: 0, count: 56)
     private(set) var notes: [Marker] = []
+    /// The computer's audio in a meeting: recorded next to the microphone and mixed in at the end.
+    enum SystemAudio: Equatable {
+        case off
+        /// Asked for; nothing has arrived yet (macOS may still be asking for permission).
+        case waiting
+        case recording
+        case problem(String)
+    }
+
+    private(set) var systemAudio: SystemAudio = .off
+    /// Set while the recording is one that began on its own (a meeting app opened the microphone).
+    private(set) var automatic: AutomaticRecording?
+    /// How a recording that began on its own ended, with its session when something was recorded.
+    var onAutomaticEnd: ((AutoRecordPolicy.End, Session?) -> Void)?
+    private var endedBy = AutoRecordPolicy.End.finished
+    /// The call ended while the recording was still starting (macOS was asking for the microphone).
+    private var stopOnceStarted = false
+    private var ticks = 0
     /// Advances once a second while active; the menu bar label reads it, since a TimelineView there
     /// keeps the status item redrawing without pause.
     private(set) var tick = Date()
@@ -332,9 +363,50 @@ final class RecordingController {
     private func startTicking() {
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick = Date() }
+            Task { @MainActor in self?.everySecond() }
         }
     }
+
+    private func everySecond() {
+        tick = Date()
+        ticks += 1
+        guard phase == .recording, let client else { return }
+        // an automatic recording ends itself when the app stops saying it is still there
+        if ticks % 30 == 0 { client.heartbeat() }
+        // a recorder taken over after a restart sends no events: notice when it has ended on its own
+        if client.isAttached, !client.isRunning {
+            apply(client.sidecarReport())
+            close()
+        }
+    }
+
+    /// After a restart: a recorder that is still writing is taken over, so it can be stopped from the
+    /// app again. Returns what a recording that began on its own needs to go on ending with its call.
+    @discardableResult
+    func adoptRunningRecording() -> AutomaticRecording? {
+        guard let model, phase == .idle else { return nil }
+        for session in model.sessions {
+            let folder = model.library.folder(of: session)
+            for recording in session.recordings where recording.inProgress {
+                guard let pid = recording.recorderPID,
+                      let client = RecorderClient.attach(pid: pid, output: folder.appendingPathComponent(recording.file)) else { continue }
+                self.client = client
+                self.session = session
+                self.course = model.course(session.courseID)
+                self.file = recording.file
+                automatic = recording.automatic
+                startedAt = recording.start
+                notes = session.markers.filter { $0.recording == recording.file }
+                client.heartbeat()
+                startTicking()
+                phase = .recording
+                return recording.automatic
+            }
+        }
+        return nil
+    }
+
+    var isIdle: Bool { phase == .idle }
 
     var isActive: Bool {
         switch phase {
@@ -348,12 +420,26 @@ final class RecordingController {
         return max(0, date.timeIntervalSince(startedAt))
     }
 
-    func start(course: Course?) async {
+    /// A meeting with a name of its own; `automatic` when it began by itself.
+    struct MeetingStart {
+        var title: String
+        var automatic: AutomaticRecording?
+    }
+
+    func start(course: Course?, meeting: MeetingStart? = nil) async {
         guard let model, phase == .idle || phase == .onBreak || isFailed else { return }
+        // a recording that begins on its own never takes over a break or a failure the user is looking at
+        if meeting?.automatic != nil, phase != .idle {
+            onAutomaticEnd?(.failed, nil)
+            return
+        }
         // a break, or a failed attempt to come back from one for the same course, continues that session
         let joining = phase == .onBreak || (isFailed && breakSession != nil && breakSession?.courseID == course?.id)
         phase = .starting
+        automatic = meeting?.automatic
+        stopOnceStarted = false
         var startedClient: RecorderClient?
+        var newSession: Session?
         do {
             let library = model.library
             let now = Date()
@@ -364,8 +450,9 @@ final class RecordingController {
                 let week = library.settings().semester.map { model.schedule.week(of: now, semester: $0) }
                 session = try library.lectureSession(course: course, date: now, week: week)
             } else {
-                session = try library.newMeeting(title: L("meeting.untitled"), date: now)
+                session = try library.newMeeting(title: meeting?.title ?? L("meeting.untitled"), date: now)
             }
+            newSession = joining || course != nil ? nil : session
             let file = library.newRecordingFile(in: session, start: now)
             let client = RecorderClient(helper: RecorderClient.defaultHelper(),
                                         output: library.folder(of: session).appendingPathComponent(file))
@@ -376,16 +463,27 @@ final class RecordingController {
                 }
             }
             let simulate = ProcessInfo.processInfo.environment["LECTERN_SIMULATE"].flatMap(Double.init)
-            let started = try await client.start(simulate: simulate)
+            // a meeting is recorded with the microphone the call itself uses, with the other side
+            // (what the Mac plays) next to it, and may run longer than a lecture
+            let isMeeting = session.kind == .meeting
+            let withSystemAudio = isMeeting && MeetingSettings.recordsSystemAudio
+            systemAudio = withSystemAudio ? .waiting : .off
+            let started = try await client.start(
+                deviceID: isMeeting && simulate == nil ? AVCaptureDevice.default(for: .audio)?.uniqueID : nil,
+                maxDuration: isMeeting ? MeetingSettings.maxDuration : nil, simulate: simulate,
+                systemAudio: withSystemAudio, watchdog: meeting?.automatic != nil ? MeetingSettings.watchdog : nil)
             startedClient = client
             var info = RecordingInfo(file: file, start: started, inProgress: true)
             info.recorderPID = client.pid
+            info.automatic = meeting?.automatic
             session.recordings.append(info)
             try library.save(session)
             self.client = client
             self.session = session
             self.course = course ?? model.course(session.courseID)
             self.file = file
+            automatic = meeting?.automatic
+            endedBy = .finished
             startedAt = started
             breakStartedAt = nil
             breakSession = nil
@@ -398,11 +496,24 @@ final class RecordingController {
                 endedEarly = nil
                 apply(early.report)
                 close()
+            } else if stopOnceStarted {
+                stopOnceStarted = false
+                await stopAutomatic()
             }
         } catch {
             // a helper that did start must not keep recording with nobody to stop it
             if let startedClient { _ = await startedClient.stop() }
-            phase = .failed(error.localizedDescription)
+            systemAudio = .off
+            if meeting?.automatic != nil {
+                // nobody asked for this recording: no failure on screen and no empty meeting left behind
+                if let newSession { try? FileManager.default.removeItem(at: model.library.folder(of: newSession)) }
+                automatic = nil
+                phase = .idle
+                model.reload()
+                onAutomaticEnd?(.failed, nil)
+            } else {
+                phase = .failed(error.localizedDescription)
+            }
         }
     }
 
@@ -444,7 +555,31 @@ final class RecordingController {
         await start(course: course)
     }
 
+    /// The call is over: ends a recording that began on its own. `quitting`: the app is about to
+    /// quit, so notes are not started now; they are written when the user asks for them.
+    func stopAutomatic(quitting: Bool = false) async {
+        if automatic != nil, phase == .starting { stopOnceStarted = true }
+        guard automatic != nil, phase == .recording else { return }
+        phase = .stopping
+        if quitting { automatic?.confirmed = false }
+        await finishRecording()
+        close()
+    }
+
+    /// The answer to "Is this a meeting?" was yes: the recording is processed like any other.
+    func confirmAutomatic() {
+        guard automatic != nil, let model, let file, let current = session else { return }
+        automatic?.confirmed = true
+        var session = model.library.reload(current) ?? current
+        if let index = session.recordings.firstIndex(where: { $0.file == file }) {
+            session.recordings[index].automatic?.confirmed = true
+            try? model.library.save(session)
+            self.session = session
+        }
+    }
+
     func stop() async {
+        if automatic != nil { endedBy = .stoppedByUser }
         switch phase {
         case .onBreak:
             close()
@@ -470,13 +605,28 @@ final class RecordingController {
         breakSession = nil
         stopAfterPause = false
         client = nil
+        systemAudio = .off
+        let wasAutomatic = automatic, how = endedBy
+        automatic = nil
+        endedBy = .finished
         model?.reload()
+        var closed: Session?
         if let finished, let model {
             let fresh = model.library.reload(finished) ?? finished
-            model.open(fresh)
-            // the lecture is over: transcript and notes start right away
-            model.processing.process(fresh)
+            closed = fresh
+            // Asked for and missing: say so once, the recording itself is fine. A call that began on
+            // its own and in which the Mac played nothing was most likely not allowed to be heard.
+            let heard = fresh.recordings.last?.systemAudio?.status
+            if heard == .failed || (heard == .silent && wasAutomatic != nil) {
+                model.show(L("notice.systemAudio.missing"))
+            }
+            // a recording that began on its own does not pull the window to itself
+            if wasAutomatic == nil { model.open(fresh) }
+            // the lecture is over: transcript and notes start right away. A recording nobody confirmed
+            // to be a meeting waits until the user asks for them.
+            if wasAutomatic?.confirmed != false { model.processing.process(fresh) }
         }
+        if wasAutomatic != nil { onAutomaticEnd?(how, closed) }
     }
 
     private func finishRecording() async {
@@ -495,7 +645,10 @@ final class RecordingController {
                 session.recordings[index].device = report.device
                 session.recordings[index].gaps = report.gaps
                 session.recordings[index].deviceChanges = report.deviceChanges
-                session.recordings[index].problem = report.status == .failed ? report.error : nil
+                session.recordings[index].systemAudio = report.systemAudio
+                // anything but a clean end is kept as a problem: the next launch repairs such a file
+                session.recordings[index].problem = report.status == .finished ? nil
+                    : report.error ?? "The recording was interrupted."
             }
         }
         try? model.library.save(session)
@@ -518,6 +671,10 @@ final class RecordingController {
             levels.append(value)
         case .gap:
             break
+        case .systemAudioStarted:
+            systemAudio = .recording
+        case .systemAudioProblem(let message):
+            systemAudio = .problem(message)
         case .ended(let report):
             // the helper stopped on its own (error or maximum length)
             apply(report)

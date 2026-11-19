@@ -219,3 +219,17 @@
 "exam.restart" = "Yeni tur";
 "exam.toQuestion" = "Soruya dön";
 "exam.showAnswer" = "Cevabı göster";
+
+"recording.sources.both" = "Mikrofon ve bilgisayarın sesi";
+"recording.sources.micOnly" = "Bilgisayarın sesi alınamıyor";
+"notice.systemAudio.missing" = "Bilgisayarın sesi kayda girmedi";
+"settings.meetings.title" = "Toplantılar";
+"settings.meetings.systemAudio" = "Bilgisayarın sesini de kaydet";
+"settings.meetings.auto" = "Toplantıları kendiliğinden kaydet";
+"settings.meetings.login" = "Oturum açılınca Lectern'i aç";
+"settings.meetings.footer" = "Karşı tarafın sesi için macOS bir kez izin ister (Sistem Ayarları > Gizlilik ve Güvenlik > Ekran ve Sistem Sesi Kaydı). Kendiliğinden kayıt Zoom, Teams, FaceTime, Webex, Slack, Discord ya da Skype mikrofonu açınca başlar, görüşme bitince biter; Lectern açık olmalıdır.";
+"meeting.titled" = "%@ toplantısı";
+"meeting.added.title" = "Toplantı kaydedildi";
+"meeting.added.show" = "Finder'da göster";
+"meeting.added.open" = "Lectern'de aç";
+"settings.meetings.unsupported" = "macOS 14.2 ya da sonrası gerekir.";

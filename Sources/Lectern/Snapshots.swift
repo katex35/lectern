@@ -3,7 +3,9 @@ import LecternCore
 import SwiftUI
 
 /// Development check: with `LECTERN_SNAPSHOT=<folder>` the app saves each main screen as a PNG and quits.
-/// Recording uses the simulated microphone when `LECTERN_SIMULATE` is set as well.
+/// Recording uses the simulated microphone when `LECTERN_SIMULATE` is set as well. With
+/// `LECTERN_MEETING_CHECK=<seconds>` it records one meeting of that length instead (the real microphone
+/// and the computer's audio unless simulated) and quits.
 @MainActor
 enum Snapshots {
     static func runIfRequested(_ model: AppModel, openSettings: OpenSettingsAction) async {
@@ -20,6 +22,11 @@ enum Snapshots {
         window.setContentSize(NSSize(width: 1280, height: 800))
         window.center()
         await pause(1.6)
+        if let seconds = ProcessInfo.processInfo.environment["LECTERN_MEETING_CHECK"].flatMap(Double.init) {
+            await meeting(model, window: window, folder: folder, seconds: seconds)
+            NSApp.terminate(nil)
+            return
+        }
         save(window, to: folder.appendingPathComponent("1-home.png"))
 
         if let course = model.courses.first(where: { !$0.events.isEmpty }) ?? model.courses.first(where: { !$0.slots.isEmpty }) {
@@ -53,6 +60,16 @@ enum Snapshots {
             await pause(0.5)
         }
         UserDefaults.standard.set(lastTab, forKey: SettingsView.tabKey)
+
+        // the small panels automatic recording shows under the menu bar, on a desktop-like grey
+        for sample in MeetingWatcher.sampleNotices {
+            let renderer = ImageRenderer(content: sample.notice.padding(24).background(Color(hex: 0xD9D9D9)))
+            renderer.scale = 2
+            if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: folder.appendingPathComponent("1k-panel-\(sample.name).png"))
+            }
+        }
 
         model.go(to: .archive(.all))
         await pause(1.6)
@@ -153,11 +170,28 @@ enum Snapshots {
             }
         }
 
+        if ProcessInfo.processInfo.environment["LECTERN_SIMULATE"] != nil {
+            await meeting(model, window: window, folder: folder, seconds: 3)
+        }
+
         model.sidebarVisible = false
         model.goHome()
         await pause(1.2)
         save(window, to: folder.appendingPathComponent("5-no-sidebar.png"))
         NSApp.terminate(nil)
+    }
+
+    /// A meeting: the microphone with what the Mac plays next to it, mixed when it stops.
+    private static func meeting(_ model: AppModel, window: NSWindow, folder: URL, seconds: Double) async {
+        model.record(nil, meeting: true)
+        await pause(seconds)
+        save(window, to: folder.appendingPathComponent("6-meeting.png"))
+        await model.recorder.stop()
+        if let session = model.recorder.session {
+            for _ in 0..<40 where model.processing.isRunning(session) { await pause(0.5) }
+        }
+        await pause(1)
+        save(window, to: folder.appendingPathComponent("6b-meeting-after.png"))
     }
 
     /// Draws a cover by handing back one already in the test library.

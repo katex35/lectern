@@ -42,6 +42,7 @@ private struct GeneralPane: View {
             }
             NotesSection()
             SemesterSection()
+            MeetingSection()
             ReminderSection()
         }
         .formStyle(.grouped)
@@ -90,6 +91,33 @@ private struct NotesSection: View {
 }
 
 /// A notice before each lecture; macOS asks for permission the first time it is turned on.
+private struct MeetingSection: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(MeetingSettings.systemAudioKey) private var systemAudio = true
+    @State private var atLogin = LoginItem.isOn
+
+    var body: some View {
+        Section {
+            Toggle(L("settings.meetings.systemAudio"), isOn: $systemAudio)
+                .disabled(!SystemAudioRecorder.isSupported)
+            Toggle(L("settings.meetings.auto"), isOn: Binding(get: { model.meetings.enabled },
+                                                             set: { model.meetings.setEnabled($0) }))
+                .disabled(!MeetingSettings.canAutoRecord)
+            Toggle(L("settings.meetings.login"), isOn: $atLogin)
+                .disabled(!LoginItem.isAvailable)
+                .onChange(of: atLogin) {
+                    // macOS may refuse: the switch then shows what is true
+                    if LoginItem.set(atLogin) != atLogin { atLogin = LoginItem.isOn }
+                }
+        } header: {
+            Text(L("settings.meetings.title"))
+        } footer: {
+            Text(L(SystemAudioRecorder.isSupported ? "settings.meetings.footer" : "settings.meetings.unsupported"))
+                .foregroundStyle(Theme.tertiary)
+        }
+    }
+}
+
 private struct ReminderSection: View {
     @AppStorage(Reminders.enabledKey) private var enabled = false
     @AppStorage(Reminders.leadKey) private var lead = 10

@@ -91,7 +91,12 @@ private struct StatusLine: View {
             if let course = recorder.course {
                 return recorder.session?.week.map { "\(course.shortName) · \(L("session.week", $0))" } ?? course.shortName
             }
-            return L("session.meeting")
+            // a meeting says what it hears: both sides, or that the computer's audio is missing
+            switch recorder.systemAudio {
+            case .recording: return "\(L("session.meeting")) · \(L("recording.sources.both"))"
+            case .problem: return "\(L("session.meeting")) · \(L("recording.sources.micOnly"))"
+            case .off, .waiting: return L("session.meeting")
+            }
         }
     }
 }

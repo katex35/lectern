@@ -84,6 +84,10 @@ Meetings/<date> <time>/               the same for a meeting
 
 When Lectern writes a file again, the old one goes to `.lectern/previous` in the lecture's folder.
 
+**Meetings** record your microphone and, on macOS 14.2 or later, what the Mac plays (the other side of a call). Both are mixed into one file when you stop. macOS asks once for permission to record the computer's audio; Settings has a switch for it. Record other people only with their consent.
+
+With "Record meetings on their own" turned on in Settings, a recording starts when Zoom, Teams, FaceTime, Webex, Slack, Discord or Skype opens the microphone and ends three minutes after the call. Lectern has to be running for that; it can open at login and wait in the menu bar. Quitting Lectern ends such a recording first.
+
 **Sign-ins** work the way the Codex CLI and the Antigravity editor sign in: the browser opens OpenAI's or Google's page, and the answer comes back to `localhost:1455` or `localhost:51121`. ChatGPT requests go to ChatGPT's Codex backend on your plan; Gemini requests go to Cloud Code on your Google account's quota.
 
 **Covers** are drawn from each course's and lecture's topic with the ChatGPT sign-in or an OpenAI or Gemini key. The picture idea is checked first, and the image model is told to leave out people, text and symbols.
@@ -96,6 +100,9 @@ When Lectern writes a file again, the old one goes to `.lectern/previous` in the
 | `LECTERN_SIMULATE=<seconds>` | Record a generated tone instead of the microphone |
 | `LECTERN_FAKE_AI=1` | Run transcription, notes, chat and covers on stand-ins, without any account |
 | `LECTERN_SNAPSHOT=<folder>` | Save each main screen as a PNG and quit |
+| `LECTERN_MEETING_CHECK=<seconds>` | With `LECTERN_SNAPSHOT`: record one meeting of that length, save its screens and quit |
+| `LECTERN_MEETING_TEST_APP=<part of a path>` | Count any process whose path contains it as a meeting app, to try automatic recording without a call |
+| `LECTERN_MEETING_QUIET=<seconds>` | End an automatic recording this long after the call, instead of three minutes |
 | `LECTERN_USER_NAME=<name>` | Greet another name in screenshots |
 | `LECTERN_IMPORT=<folder>` | Import lectures from the ders-kayit tool into an empty library |
 

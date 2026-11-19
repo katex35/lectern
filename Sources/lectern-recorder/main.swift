@@ -1,11 +1,19 @@
 // Records one microphone stream in its own process, so a crash or quit of the app does not stop it.
 //
-//   lectern-recorder <output.m4a> [--device ID] [--max-duration S] [--fragment S]
+//   lectern-recorder <output.m4a> [--device ID] [--max-duration S] [--fragment S] [--system-audio]
+//                    [--watchdog S]
 //   lectern-recorder <output.m4a> --simulate S [--gap START:LENGTH]...     (tests, demos)
 //   lectern-recorder --list-devices
 //
-// Events go to stdout as JSON lines: ready, level, gap, finished, failed. SIGINT or SIGTERM stops
-// and finalizes the file. Exit status: 0 finished, 2 could not start, 3 finished with an error.
+// With --system-audio what the Mac plays is recorded next to the microphone (a meeting's other side)
+// and mixed into the output once the recording stops. The microphone never waits for it.
+// With --watchdog the recording ends by itself when no SIGUSR1 arrived for that long: a meeting
+// recorded automatically is ended by the app, and must not run on when the app is gone.
+//
+// Events go to stdout as JSON lines: ready, level, gap, system (state "recording" once something the
+// Mac plays was heard, "failed" with an error), mixing, finished, failed. SIGINT or
+// SIGTERM stops and finalizes the file. Exit status: 0 finished, 2 could not start, 3 finished with
+// an error.
 import Foundation
 import LecternCore
 
@@ -30,6 +38,8 @@ struct Line: Encodable {
     var gap: RecordingGap?
     var report: RecordingReport?
     var error: String?
+    /// For `system`: "recording" once the computer's audio arrives, "failed" with `error` otherwise.
+    var state: String?
     var devices: [Device]?
 
     struct Device: Encodable {
@@ -63,6 +73,12 @@ var config = RecorderConfiguration()
 if let v = option("--max-duration").flatMap(Double.init) { config.maxDuration = v }
 if let v = option("--fragment").flatMap(Double.init) { config.fragmentInterval = v }
 let deviceID = option("--device")
+let watchdogSeconds = option("--watchdog").flatMap(Double.init)
+let wantsSystemAudio: Bool = {
+    guard let i = args.firstIndex(of: "--system-audio") else { return false }
+    args.remove(at: i)
+    return true
+}()
 let simulate = option("--simulate").flatMap(Double.init)
 var gaps: [(Double, Double)] = []
 while let g = option("--gap") {
@@ -74,10 +90,33 @@ guard args.count == 1 else {
     exit(2)
 }
 
-let recorder = Recorder(output: URL(fileURLWithPath: args[0]), configuration: config)
+let output = URL(fileURLWithPath: args[0])
+let recorder = Recorder(output: output, configuration: config)
+let systemAudio: SystemAudioRecorder? = wantsSystemAudio
+    ? SystemAudioRecorder(output: RecordingTracks.system(for: output), configuration: config) : nil
+systemAudio?.onEvent = { event in
+    switch event {
+    case .heard: emit(Line(event: "system", state: "recording"))
+    case .problem(let message): emit(Line(event: "system", error: message, state: "failed"))
+    }
+}
 var exiting = false
 
-@Sendable func finish(_ report: RecordingReport) -> Never {
+/// The microphone file is final. The computer's audio, if it was recorded, is closed and mixed in
+/// before the one `finished` line: the app never sees a recording that is still changing.
+@Sendable func finish(_ microphone: RecordingReport) async -> Never {
+    var report = microphone
+    if let systemAudio {
+        let track = await systemAudio.stop()
+        if track != nil, TrackMerger.isPending(output) {
+            emit(Line(event: "mixing"))
+            report.systemAudio = TrackMerger.mixPending(output)
+        } else {
+            report.systemAudio = SystemAudioReport(status: .failed, error: systemAudio.problem ?? "no audio arrived from the computer")
+        }
+        // the report next to the file is what an app that was not listening reads
+        try? JSONStore.write(report, to: RecordingReport.sidecar(for: output))
+    }
     emit(Line(event: "finished", report: report))
     exit(report.status == .finished ? 0 : 3)
 }
@@ -89,7 +128,7 @@ recorder.onEvent = { event in
     case .stopped(let report):
         guard !exiting else { return }
         exiting = true
-        finish(report)
+        Task { await finish(report) }
     }
 }
 
@@ -98,21 +137,43 @@ let signalSources = [SIGINT, SIGTERM].map { s -> DispatchSourceSignal in
     source.setEventHandler {
         guard !exiting else { return }
         exiting = true
-        Task { finish(await recorder.stop()) }
+        Task { await finish(await recorder.stop()) }
     }
     source.resume()
     return source
 }
 
+// SIGUSR1 means "the app is still here". Counted on a clock that stops while the Mac sleeps, so
+// waking up does not look like a long silence.
+var lastHeartbeat = ProcessInfo.processInfo.systemUptime
+var watchdogSources: [any DispatchSourceProtocol] = []
+if let watchdogSeconds {
+    signal(SIGUSR1, SIG_IGN)
+    let beat = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+    beat.setEventHandler { lastHeartbeat = ProcessInfo.processInfo.systemUptime }
+    beat.resume()
+    let check = DispatchSource.makeTimerSource(queue: .main)
+    check.schedule(deadline: .now() + 5, repeating: 5)
+    check.setEventHandler {
+        guard !exiting, ProcessInfo.processInfo.systemUptime - lastHeartbeat > watchdogSeconds else { return }
+        exiting = true
+        Task { await finish(await recorder.stop()) }
+    }
+    check.resume()
+    watchdogSources = [beat, check]
+}
+
 if let simulate {
     recorder.startSimulated(duration: simulate, gaps: gaps)
     emit(Line(event: "ready", start: Date()))
+    systemAudio?.startSimulated(duration: simulate)
 } else {
     Task {
         do {
             let device = deviceID.flatMap { id in Recorder.inputDevices().first { $0.id == id } }
             let start = try await recorder.start(device: device)
             emit(Line(event: "ready", start: start))
+            systemAudio?.start()
         } catch {
             emit(Line(event: "failed", error: error.localizedDescription))
             exit(2)
@@ -120,4 +181,4 @@ if let simulate {
     }
 }
 
-withExtendedLifetime(signalSources) { dispatchMain() }
+withExtendedLifetime((signalSources, watchdogSources)) { dispatchMain() }

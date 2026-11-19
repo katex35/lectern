@@ -56,6 +56,10 @@ public struct RecordingInfo: Codable, Hashable, Identifiable, Sendable {
     public var inProgress: Bool
     /// Process id of the recorder helper while `inProgress`, to reattach after the app restarts.
     public var recorderPID: Int32?
+    /// Set when the computer's audio was recorded with the microphone (meetings).
+    public var systemAudio: SystemAudioReport?
+    /// Set when the recording began on its own because a meeting app opened the microphone.
+    public var automatic: AutomaticRecording?
 
     public init(file: String, start: Date, duration: Double? = nil, device: String? = nil,
                 gaps: [RecordingGap] = [], deviceChanges: [DeviceChange] = [], problem: String? = nil,

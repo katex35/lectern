@@ -24,9 +24,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.2</string>
+	<string>0.3.0</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
 	<key>LSMinimumSystemVersion</key>
@@ -35,6 +35,8 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Lectern records what your Mac plays during a meeting, so the notes cover both sides of the call.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Lectern records your lectures and meetings so it can write notes from them.</string>
 	<key>NSSupportsAutomaticTermination</key>

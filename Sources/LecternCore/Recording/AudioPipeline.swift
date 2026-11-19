@@ -40,6 +40,8 @@ public struct RecordingReport: Codable, Hashable, Sendable {
     /// Device timestamps that went backwards (overlapping buffers); forward jumps are gaps instead.
     public var backwardJumps: Int
     public var error: String?
+    /// Set when the computer's audio was recorded next to the microphone (meetings).
+    public var systemAudio: SystemAudioReport?
 
     public var silentSeconds: Double { gaps.reduce(0) { $0 + $1.duration } }
 
@@ -157,6 +159,8 @@ final class AudioPipeline: @unchecked Sendable {
             guard makeWriter() else { return fail() }
             origin = start
             startDate = Date().addingTimeInterval(-(now() - start))
+            // on disk from the first sample: the start time is what places this file next to another track
+            writeSidecar(report(.recording))
             onReady(report(.recording))
         } else if discontinuity > 0.002 && discontinuity <= config.gapThreshold {
             // a short skip is filled where it happened; the wall-clock check below only

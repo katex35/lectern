@@ -7,6 +7,10 @@ public final class RecorderClient: @unchecked Sendable {
     public enum Event: Sendable {
         case level(rms: Float, peak: Float)
         case gap(RecordingGap)
+        /// The computer's audio is arriving (meetings recorded with `systemAudio`).
+        case systemAudioStarted
+        /// The computer's audio cannot be recorded; the microphone goes on alone.
+        case systemAudioProblem(String)
         /// The recording ended without a stop request (error or maximum length).
         case ended(RecordingReport)
     }
@@ -15,6 +19,8 @@ public final class RecorderClient: @unchecked Sendable {
     public private(set) var pid: Int32?
     /// Delivered on the main queue.
     public var onEvent: (@Sendable (Event) -> Void)?
+    /// How long `stop()` waits for the helper to finalize (and mix) the file before giving up on it.
+    public var stopTimeout: Double = 900
 
     private let helper: URL?
     private var process: Process?
@@ -25,6 +31,13 @@ public final class RecorderClient: @unchecked Sendable {
     private var finalReport: RecordingReport?
     private var stopRequested = false
     private var ended = false
+    /// The helper ends the recording by itself when `heartbeat()` stops coming.
+    private var watched = false
+
+    /// True for a client that took over a helper another instance of the app started: it gets no
+    /// events, so whoever holds it looks at `isRunning` now and then.
+    public var isAttached: Bool { helper == nil }
+    public var isRunning: Bool { pid.map(Self.isAlive) ?? false }
 
     struct Line: Decodable {
         var event: String
@@ -34,6 +47,7 @@ public final class RecorderClient: @unchecked Sendable {
         var gap: RecordingGap?
         var report: RecordingReport?
         var error: String?
+        var state: String?
     }
 
     static let lineDecoder: JSONDecoder = {
@@ -61,17 +75,66 @@ public final class RecorderClient: @unchecked Sendable {
     /// Reattaches to a helper that is still recording `output` (after the app restarted).
     /// Returns nil when that process is gone.
     public static func attach(pid: Int32, output: URL) -> RecorderClient? {
-        guard isAlive(pid) else { return nil }
-        return RecorderClient(attachedTo: pid, output: output)
+        guard isRecording(pid: pid, output: output) else { return nil }
+        let client = RecorderClient(attachedTo: pid, output: output)
+        client.watched = commandLine(of: pid)?.contains("--watchdog") == true
+        return client
+    }
+
+    /// Tells a helper started with `watchdog` that the app is still there. Without one for that long
+    /// the helper ends the recording itself: an automatic recording must not run on with nobody
+    /// left to notice that the call is over.
+    public func heartbeat() {
+        guard watched, let pid, !lock.withLock({ ended || stopRequested }) else { return }
+        kill(pid, SIGUSR1)
     }
 
     public static func isAlive(_ pid: Int32) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
     }
 
+    /// True when `pid` is a recorder helper writing `output`. A process id alone proves nothing: after
+    /// a restart it may belong to any other program, and stopping sends it a signal.
+    public static func isRecording(pid: Int32, output: URL) -> Bool {
+        guard pid > 0, isAlive(pid), let command = commandLine(of: pid), let program = command.first else { return false }
+        guard URL(fileURLWithPath: program).lastPathComponent == "lectern-recorder" else { return false }
+        let wanted = output.standardizedFileURL.path
+        return command.dropFirst().contains { URL(fileURLWithPath: $0).standardizedFileURL.path == wanted }
+    }
+
+    /// The program and arguments `pid` was started with, nil when it cannot be read.
+    static func commandLine(of pid: Int32) -> [String]? {
+        var mib = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var bytes = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &bytes, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        let count = bytes.withUnsafeBytes { Int($0.loadUnaligned(as: Int32.self)) }
+        // layout: argc, the program's path, padding zeros, then argc strings
+        var i = MemoryLayout<Int32>.size
+        func string() -> String? {
+            guard i < size else { return nil }
+            let start = i
+            while i < size, bytes[i] != 0 { i += 1 }
+            defer { i += 1 }
+            return String(decoding: bytes[start..<i], as: UTF8.self)
+        }
+        guard let program = string() else { return nil }
+        while i < size, bytes[i] == 0 { i += 1 }
+        var arguments: [String] = []
+        for _ in 0..<max(0, count) {
+            guard let argument = string() else { break }
+            arguments.append(argument)
+        }
+        // argv[0] repeats the program
+        return [program] + arguments.dropFirst()
+    }
+
     /// Starts the helper and returns the wall-clock time of the first sample once audio flows.
+    /// With `systemAudio` what the Mac plays is recorded too and mixed in when the recording stops.
     public func start(deviceID: String? = nil, maxDuration: Double? = nil, simulate: Double? = nil,
-                      gaps: [(Double, Double)] = []) async throws -> Date {
+                      gaps: [(Double, Double)] = [], systemAudio: Bool = false,
+                      watchdog: Double? = nil) async throws -> Date {
         guard let helper else { throw RecorderError.failed("attached client cannot start") }
         let p = Process()
         p.executableURL = helper
@@ -80,6 +143,11 @@ public final class RecorderClient: @unchecked Sendable {
         if let maxDuration { arguments += ["--max-duration", String(maxDuration)] }
         if let simulate { arguments += ["--simulate", String(simulate)] }
         for g in gaps { arguments += ["--gap", "\(g.0):\(g.1)"] }
+        if systemAudio { arguments.append("--system-audio") }
+        if let watchdog {
+            arguments += ["--watchdog", String(watchdog)]
+            watched = true
+        }
         p.arguments = arguments
         let out = Pipe()
         p.standardOutput = out
@@ -106,7 +174,8 @@ public final class RecorderClient: @unchecked Sendable {
         }
     }
 
-    /// Stops the recording and waits until the file is finalized (at most 60 s).
+    /// Stops the recording and waits until the file is finalized, and mixed with the computer's audio
+    /// when that was recorded (at most `stopTimeout`).
     @discardableResult
     public func stop() async -> RecordingReport? {
         if let r = lock.withLock({ finalReport }) { return r }
@@ -118,11 +187,18 @@ public final class RecorderClient: @unchecked Sendable {
         if first { kill(pid, SIGINT) }
         if process == nil {
             // attached: no pipe to read, poll until the process is gone, then read the report
-            for _ in 0..<300 {
-                if !Self.isAlive(pid) { break }
+            let deadline = Date().addingTimeInterval(stopTimeout)
+            while Self.isAlive(pid), Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
-            let r = sidecarReport()
+            var r = sidecarReport()
+            if Self.isAlive(pid) {
+                // still writing: nobody may treat the file as final while it does. It is ended for
+                // good; the next launch repairs the file up to its last fragment.
+                kill(pid, SIGKILL)
+                for _ in 0..<50 where Self.isAlive(pid) { try? await Task.sleep(nanoseconds: 100_000_000) }
+                r = Self.timedOut(r)
+            }
             lock.withLock { finalReport = r }
             return r
         }
@@ -132,13 +208,29 @@ public final class RecorderClient: @unchecked Sendable {
                 stopWaiters.append(cont)
                 return nil
             }
-            if let done { cont.resume(returning: done) }
+            if let done { return cont.resume(returning: done) }
+            // A helper that neither finishes nor exits must not leave Stop waiting forever, and nobody
+            // may treat its file as final while it still writes: it is ended for good first. The next
+            // launch repairs the file up to its last fragment.
+            DispatchQueue.global().asyncAfter(deadline: .now() + stopTimeout) { [weak self] in
+                guard let self, !self.lock.withLock({ self.ended }) else { return }
+                self.conclude(Self.timedOut(self.sidecarReport()))
+                kill(pid, SIGKILL)
+            }
         }
         // the file is final once "finished" arrives; also wait for the helper to exit, so quitting
         // right after Stop never leaves it half-way
         for _ in 0..<250 where process?.isRunning == true {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+        return report
+    }
+
+    static func timedOut(_ last: RecordingReport?) -> RecordingReport {
+        var report = last ?? RecordingReport(status: .failed, start: nil, duration: 0, device: "", deviceID: "", gaps: [],
+                                             deviceChanges: [], backwardJumps: 0, error: nil)
+        report.status = .failed
+        report.error = "The recorder did not finish in time and was stopped; the recording is recovered up to its last moments."
         return report
     }
 
@@ -182,6 +274,8 @@ public final class RecorderClient: @unchecked Sendable {
             if let rms = line.rms, let peak = line.peak { deliver(.level(rms: rms, peak: peak)) }
         case "gap":
             if let gap = line.gap { deliver(.gap(gap)) }
+        case "system":
+            deliver(line.state == "recording" ? .systemAudioStarted : .systemAudioProblem(line.error ?? ""))
         case "finished":
             if let report = line.report { conclude(report) }
         default:
